@@ -1,0 +1,82 @@
+==========================================================================
+ ART - Setup & utilisation
+==========================================================================
+
+Ce dépôt regroupe l'analyse du modèle ART (Artifact Removal Transformer),
+des notes LaTeX, et du code pour le travail sur le motor imagery.
+
+--------------------------------------------------------------------------
+ STRUCTURE
+--------------------------------------------------------------------------
+  1 - Metrics/ ... 6 - Planning.../   Notes LaTeX (chaque dossier = un .tex + .pdf)
+  Code/                               Nos scripts (Dataset.py, ...)
+  ArtifactRemovalTransformer/         Code officiel ART (modèle + pipeline)
+  EEGdenoiseNet/                      Données EEGdenoiseNet
+  Database Article/                   Article + ressources
+  ART.pdf                             Article de référence
+
+--------------------------------------------------------------------------
+ NON INCLUS DANS LE DÉPÔT (voir .gitignore)
+--------------------------------------------------------------------------
+  - ArtifactRemovalTransformer/ART312/   : environnement virtuel Python
+                                           (à recréer, voir ci-dessous)
+  - *.pth.tar                            : poids des modèles (fournis par
+                                           l'équipe, à replacer dans
+                                           ArtifactRemovalTransformer/model/.../modelsave/)
+
+--------------------------------------------------------------------------
+ 1) ENVIRONNEMENT PYTHON
+--------------------------------------------------------------------------
+  # depuis la racine du dépôt
+  python -m venv ArtifactRemovalTransformer/ART312
+  # activer (Windows PowerShell) :
+  ArtifactRemovalTransformer/ART312/Scripts/Activate.ps1
+
+  # dépendances du modèle ART :
+  pip install -r ArtifactRemovalTransformer/requirements.txt
+
+  # dépendances de nos scripts (Code/) :
+  pip install mne matplotlib
+
+--------------------------------------------------------------------------
+ 2) POIDS DES MODÈLES
+--------------------------------------------------------------------------
+  Non versionnés (trop lourds pour GitHub). Récupérer les .pth.tar de
+  l'équipe et les placer dans :
+     ArtifactRemovalTransformer/model/<NomModele>/modelsave/
+
+--------------------------------------------------------------------------
+ 3) LANCER LE PIPELINE ART (débruitage)
+--------------------------------------------------------------------------
+  cd ArtifactRemovalTransformer
+  python main.py
+  # Les paramètres (fichier d'entrée, modèle, sortie) se règlent en haut
+  # de main.py : input_name, modelname ('ICUNet'/'ICUNet++'/'ICUNet_attn'/'ART'),
+  # output_name, sample_rate.
+  # Sortie : sampledata/outputsample.csv (échelle z-score).
+
+--------------------------------------------------------------------------
+ 4) NOS SCRIPTS (Code/)
+--------------------------------------------------------------------------
+  # Explorer / visualiser un sujet de la dataset EEGBCI (BCI2000) :
+  python Code/Dataset.py --subject 1              # infos
+  python Code/Dataset.py --subject 1 --plot       # infos + signaux
+  # runs 4 8 12 = motor imagery main gauche/droite (défaut)
+
+  # Visualiser avant/après débruitage (ART) :
+  python ArtifactRemovalTransformer/EEG_Visualizer.py
+
+==========================================================================
+
+
+
+
+
+
+
+
+
+
+
+z-score par fenetre
+Application du modèle \ Les tableaux avec pour chaque modèle (avec les écarts-types) \ Lancer l'entrainement pour duoCL et GCTNet \ Reproduction des cartographies \ Calcul de MSE pour duoCL et GCTNet \ Code d'entrainement d'ART sur denoiseNet

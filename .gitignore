@@ -1,0 +1,49 @@
+# --- Environnement virtuel Python (ne jamais versionner) ---
+ArtifactRemovalTransformer/ART312/
+**/venv/
+**/.venv/
+**/env/
+
+# --- Poids de modeles (> 100 Mo, fournis separement par l'equipe) ---
+*.pth
+*.pth.tar
+*.tar
+*.ckpt
+
+# --- Donnees publiques tierces (lourdes, telechargeables separement) ---
+EEGdenoiseNet/
+Code/Brut/
+Code/Prétraité/
+Code/Nettoyé/
+Code/Final/
+
+# --- Donnees de demo GCTNet-main (lourdes, regenerables via son preprocess) ---
+GCTNet-main/**/data/*.npy
+
+# --- Telechargements incomplets / fichiers temporaires ---
+*.crdownload
+*.part
+*.tmp
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- LaTeX (fichiers auxiliaires de compilation) ---
+*.aux
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.out
+*.toc
+build.log
+
+# --- Notes LaTeX (gardees en local, hors depot : 1 - Metrics ... 6 - Planning) ---
+/[0-9] - */
+/[0-9] - *.pdf
+
+# --- Outillage / config locale ---
+.claude/
+.vscode/
+.DS_Store
