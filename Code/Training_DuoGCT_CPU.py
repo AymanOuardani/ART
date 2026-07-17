@@ -41,9 +41,9 @@ BASE = Path(__file__).resolve().parent
 MODEL_DIR = BASE / "model"
 DATA_DIR = Path(r"C:\Users\aymen\Desktop\ART\EEGdenoiseNet\data")
 
-# Ponderations des pertes adverses de GCTNet (feature + cls), cf. GCTNet-main
-W_FEATURE = 0.05
-W_CLS = 0.05
+# Ponderations des pertes adverses de GCTNet, loss_type = "feature+cls" (GCTNet-main/train.py)
+W_FEATURE = 0.05      # w_f dans train.py
+W_CLS = 0.05          # w_c dans train.py
 
 
 # --------------------------- Donnees / bruit -------------------------------
@@ -149,7 +149,8 @@ def weights_init(m):
 
 
 def evaluate(model, dataset, device):
-    # RMSE moyen (val) sur un dataset
+    # RMSE moyen (validation) : identique au "val_mse" de GCTNet-main/train.py qui,
+    # malgre son nom, calcule bien un RMSE (.sqrt()). Sert a choisir le meilleur checkpoint.
     model.eval()
     rmses = []
     with torch.no_grad():
@@ -184,7 +185,7 @@ def train_gctnet(opts, train_data, val_data, save_dir, log):
     for epoch in range(opts.epochs):
         model.train()
         model_d.train()
-        losses = []
+        losses, run_sum = [], 0.0
         print(f"Epoch {epoch + 1}/{opts.epochs}  [GCTNet]")
         pbar = tqdm(range(train_data.len()), ascii=".=",
                     bar_format="{n_fmt}/{total_fmt} [{bar:30}] - {elapsed}{postfix}")
@@ -193,31 +194,33 @@ def train_gctnet(opts, train_data, val_data, save_dir, log):
             x = torch.from_numpy(x).to(device).unsqueeze(1)
             y = torch.from_numpy(y).to(device)
 
-            # --- discriminateur ---
+            # --- discriminateur (identique a GCTNet-main/train.py : pas de detach) ---
             p = model(x).view(x.shape[0], -1)
-            fake_y, _, _, _ = model_d(p.detach().unsqueeze(1))
+            fake_y, _, _, _ = model_d(p.unsqueeze(1))
             real_y, _, _, _ = model_d(y.unsqueeze(1))
             d_loss = 0.5 * torch.mean(fake_y ** 2) + 0.5 * torch.mean((real_y - 1) ** 2)
             opt_d.zero_grad()
             d_loss.backward()
             opt_d.step()
 
-            # --- generateur ---
+            # --- generateur (perte MSE + feature + classification) ---
             p = model(x).view(x.shape[0], -1)
             fake_y, _, fake_f2, _ = model_d(p.unsqueeze(1))
             _, _, true_f2, _ = model_d(y.unsqueeze(1))
             g_loss = (mse(p, y)
                       + W_FEATURE * mse(fake_f2, true_f2)
                       + W_CLS * torch.mean((fake_y - 1) ** 2))
+            opt_d.zero_grad()                       # comme train.py : on remet a zero les deux
             opt_g.zero_grad()
             g_loss.backward()
             opt_g.step()
-            losses.append(g_loss.item())
-            pbar.set_postfix_str(f" - loss: {sum(losses) / len(losses):.4f}")
+            losses.append(g_loss.detach())
+            run_sum += g_loss.item()
+            pbar.set_postfix_str(f" - loss: {run_sum / (b + 1):.4f}")
         pbar.close()
 
         train_data.shuffle()
-        train_loss = sum(losses) / len(losses)
+        train_loss = torch.stack(losses).mean().item()   # = leur train_loss (GCTNet-main)
         val_rmse = evaluate(model, val_data, device)
         improved = val_rmse < best_rmse
         tail = (f" - val_rmse improved from {best_rmse:.4f} to {val_rmse:.4f}, saving best model"
@@ -245,7 +248,7 @@ def train_duocl(opts, train_data, val_data, save_dir, log):
     best_rmse = float("inf")
     for epoch in range(opts.epochs):
         model.train()
-        losses = []
+        losses, run_sum = [], 0.0
         print(f"Epoch {epoch + 1}/{opts.epochs}  [DuoCL]")
         pbar = tqdm(range(train_data.len()), ascii=".=",
                     bar_format="{n_fmt}/{total_fmt} [{bar:30}] - {elapsed}{postfix}")
@@ -254,16 +257,17 @@ def train_duocl(opts, train_data, val_data, save_dir, log):
             x = torch.from_numpy(x).to(device).unsqueeze(1)
             y = torch.from_numpy(y).to(device)
             p = model(x).view(x.shape[0], -1)
-            loss = mse(p, y)
+            loss = mse(p, y)                        # perte MSE (denoise_loss_mse dans train.py)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            losses.append(loss.item())
-            pbar.set_postfix_str(f" - loss: {sum(losses) / len(losses):.4f}")
+            losses.append(loss.detach())
+            run_sum += loss.item()
+            pbar.set_postfix_str(f" - loss: {run_sum / (b + 1):.4f}")
         pbar.close()
 
         train_data.shuffle()
-        train_loss = sum(losses) / len(losses)
+        train_loss = torch.stack(losses).mean().item()
         val_rmse = evaluate(model, val_data, device)
         improved = val_rmse < best_rmse
         tail = (f" - val_rmse improved from {best_rmse:.4f} to {val_rmse:.4f}, saving best model"
