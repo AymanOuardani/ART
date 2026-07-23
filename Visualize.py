@@ -2,20 +2,21 @@
 Visualisation des essais EEG d'un sujet, a n'importe quelle etape du pipeline.
 Fichier unique fusionnant les 4 anciens scripts visualize_* (etape positionnelle).
 
-    python Visualize.py <etape> [sujet] [modele] [--label gauche|droite]
+    python Visualize.py <etape> [sujet] [modele] [base] [--label gauche|droite]
 
     etape  : brut | pretraite | nettoye
     sujet  : numero du sujet            (defaut : 1)
-    modele : ICUNet | ICUNet++ | ICUNet_attn | ART   (nettoye ; defaut ART)
+    modele : ICUNet | ICUNet++ | ICUNet_attn | ART | DuoCL | GCTNet  (nettoye ; defaut ART)
+    base   : original | EEGdenoiseNet   (nettoye ; defaut EEGdenoiseNet)
 
 Exemples :
     python Visualize.py brut 1
     python Visualize.py pretraite 1
-    python Visualize.py nettoye 1 ART
-    python Visualize.py nettoye 1 ICUNet --label gauche
+    python Visualize.py nettoye 1 DuoCL EEGdenoiseNet
+    python Visualize.py nettoye 1 ART original --label gauche
 
-Sources : brut = Databases/EEGBCI/Brut (64 ch, 160 Hz, decoupe a la volee) ;
-pretraite = Output/Prétraité ; nettoye = Output/Nettoyé/S###/{modele}.
+Sources : brut = Databases/EEGBCI/Brut (64 ch, 160 Hz) ; pretraite = Output/Prétraité ;
+nettoye = Output/Nettoyé/S###/{modele}_{base}-epo.fif (produit par Clean.py).
 """
 
 import argparse
@@ -34,7 +35,8 @@ NETTOYE = BASE / "Output" / "Nettoyé"
 
 RUNS = [4, 8, 12]
 EPOCH_LEN = 640            # 4 s a 160 Hz
-MODELS = ["ICUNet", "ICUNet++", "ICUNet_attn", "ART"]
+MODELS = ["ICUNet", "ICUNet++", "ICUNet_attn", "ART", "DuoCL", "GCTNet"]
+DATASETS = ["original", "EEGdenoiseNet"]
 
 
 # ----------------------------- Brut ----------------------------------------
@@ -94,6 +96,8 @@ def main():
     ap.add_argument("subject", nargs="?", type=int, default=1, help="numero du sujet (defaut : 1)")
     ap.add_argument("model", nargs="?", choices=MODELS, default="ART",
                     help="modele (nettoye ; defaut : ART)")
+    ap.add_argument("dataset", nargs="?", choices=DATASETS, default="EEGdenoiseNet",
+                    help="base d'entrainement du modele (nettoye ; defaut : EEGdenoiseNet)")
     ap.add_argument("--label", choices=["gauche", "droite"], help="filtre une classe")
     args = ap.parse_args()
 
@@ -107,8 +111,18 @@ def main():
         title = f"Sujet {s} - PRÉTRAITÉ - gauche (bleu) / droite (rouge)"
 
     else:  # nettoye
-        epochs = mne.read_epochs(NETTOYE / f"S{s:03d}" / f"{args.model}-epo.fif", verbose="ERROR")
-        title = f"Sujet {s} - {args.model} - gauche (bleu) / droite (rouge)"
+        d = NETTOYE / f"S{s:03d}"
+        path = d / f"{args.model}_{args.dataset}-epo.fif"      # nommage Clean.py
+        if not path.exists():
+            old = d / f"{args.model}-epo.fif"                  # repli : ancien nommage
+            if old.exists():
+                path = old
+            else:
+                raise SystemExit(
+                    f"ERREUR : essai debruite introuvable ({path.name}).\n"
+                    f"  Lance d'abord : python Clean.py {args.model} {args.dataset}")
+        epochs = mne.read_epochs(path, verbose="ERROR")
+        title = f"Sujet {s} - {args.model} ({args.dataset}) - gauche (bleu) / droite (rouge)"
 
     show(epochs, s, title, args.label)
 
