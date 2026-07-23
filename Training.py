@@ -3,15 +3,16 @@ Entrainement des modeles de debruitage EEG mono-canal sur EEGdenoiseNet.
 Fichier unique fusionnant les 4 anciens scripts (ART/DuoGCT x CPU/GPU) :
 le modele et le peripherique sont choisis en ligne de commande.
 
-    model (positionnel) : ART | DuoCL | GCTNet | all   (defaut : all)
-    --device            : auto | cpu | gpu             (defaut : auto)
+    model   (positionnel) : ART | DuoCL | GCTNet | all
+    dataset (positionnel) : EEGdenoiseNet   (les debruiteurs s'entrainent dessus)
+    --device              : auto | cpu | gpu   (defaut : auto)
+    --noise               : EOG | EMG | Hybrid (type de bruit ajoute ; defaut Hybrid)
 
 Exemples :
-    python Training.py                          # tous les modeles, device auto
-    python Training.py ART --device gpu --gpu 0
-    python Training.py DuoCL --device cpu --noise EOG
-    python Training.py GCTNet --epochs 100 --noise Hybrid
-    python Training.py all --device gpu
+    python Training.py ART EEGdenoiseNet
+    python Training.py ART EEGdenoiseNet --device gpu --gpu 0
+    python Training.py DuoCL EEGdenoiseNet --noise EOG
+    python Training.py all EEGdenoiseNet --epochs 100
 
 Protocole (commun aux 3 modeles) : 4514 epoques EEG -> 4062 train / 452 test,
 melange signal + bruit a SNR variable (-5..5 dB), cf. GCTNet-main.
@@ -487,8 +488,10 @@ def select_device(opts):
 def main():
     ap = argparse.ArgumentParser(
         description="Entrainement des modeles de debruitage (ART / DuoCL / GCTNet) sur EEGdenoiseNet.")
-    ap.add_argument("model", nargs="?", choices=["ART", "DuoCL", "GCTNet", "all"], default="all",
-                    help="modele a entrainer (defaut : all = les trois)")
+    ap.add_argument("model", choices=["ART", "DuoCL", "GCTNet", "all"],
+                    help="modele a entrainer (ou 'all' pour les trois)")
+    ap.add_argument("dataset", choices=["EEGdenoiseNet"],
+                    help="base d'entrainement (les debruiteurs s'entrainent sur EEGdenoiseNet)")
     ap.add_argument("--device", choices=["auto", "cpu", "gpu"], default="auto",
                     dest="device_mode", help="peripherique (defaut : auto)")
     ap.add_argument("--gpu", type=int, default=0, help="index du GPU CUDA (si device gpu/auto)")
@@ -502,7 +505,7 @@ def main():
 
     select_device(opts)
     targets = ["ART", "DuoCL", "GCTNet"] if opts.model == "all" else [opts.model]
-    print(f"Modeles : {', '.join(targets)} | bruit : {opts.noise}")
+    print(f"Modeles : {', '.join(targets)} | base : {opts.dataset} | bruit : {opts.noise}")
 
     # Donnees chargees / decoupees une seule fois (partagees entre modeles).
     eeg, nos = load_arrays(opts.noise)

@@ -65,9 +65,12 @@ python Evaluation.py ART EEGdenoiseNet
 ## Entraînement des débruiteurs (sur EEGdenoiseNet)
 
 ```bash
-python Training.py ART --device gpu       # modèle : ART | DuoCL | GCTNet | all
-python Training.py all --device cpu       # device : auto | cpu | gpu
+python Training.py ART EEGdenoiseNet --device gpu    # modèle  base
+python Training.py all EEGdenoiseNet --device cpu    # modèle : ART|DuoCL|GCTNet|all
 ```
+
+- **Modèle** : `ART` · `DuoCL` · `GCTNet` · `all` — **Base** : `EEGdenoiseNet` (seule base d'entraînement).
+- Options : `--device {auto,cpu,gpu}` · `--noise {EOG,EMG,Hybrid}` · `--epochs N`.
 
 Produit les poids dans `Model/<modèle>/modelsave/` (`BEST_checkpoint.pth.tar`).
 
