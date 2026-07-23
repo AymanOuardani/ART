@@ -3,7 +3,7 @@ Evaluation CSP + LDA (Fig 6C), adaptee du code MNE (Billinger) a nos donnees.
 
 Etape 3/3. Ce script NE fait QUE l'evaluation ; il consomme des donnees deja preparees :
   - Prétraité/S###-epo.fif         (sans traitement)     <- Pretreatement.py <sujets>
-  - Nettoyé/S###/{modele}_{dataset}-epo.fif (debruite)   <- clean.py <modele> <dataset>
+  - Nettoyé/S###/{modele}_{dataset}-epo.fif (debruite)   <- Clean.py <modele> <dataset>
 
 En ligne de commande, on choisit UN modele a evaluer, identifie par son nom ET la
 base sur laquelle il a ete entraine (ex. ART entraine sur la base d'origine vs ART
@@ -20,7 +20,7 @@ entraine sur EEGdenoiseNet). Le script :
     python Evaluation.py GCTNet EEGdenoiseNet
     python Evaluation.py ICUNet original
 
-Le debruitage (application des modeles) est fait par clean.py. Le registre des
+Le debruitage (application des modeles) est fait par Clean.py. Le registre des
 modeles (MODEL_REGISTRY) y est defini et importe ici.
 """
 
@@ -36,7 +36,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import ShuffleSplit, cross_val_score
 
 # Source unique du registre + conventions de nommage + dossiers (defini dans clean.py)
-from clean import (BASE, PRETRAITE, NETTOYE,
+from Clean import (BASE, PRETRAITE, NETTOYE,
                    MODEL_REGISTRY, cache_key_of, label_of)
 
 mne.set_log_level("ERROR")
@@ -176,7 +176,7 @@ def require_cleaned(cache_key, label, model, dataset):
         raise SystemExit(
             f"ERREUR : aucun essai debruite trouve pour {label} dans Nettoyé/.\n"
             f"  Lancez d'abord le debruitage :\n"
-            f"      python clean.py {model} {dataset}")
+            f"      python Clean.py {model} {dataset}")
     return have
 
 

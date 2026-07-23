@@ -8,9 +8,9 @@ entraine (ex. ART d'origine vs ART reentraine sur EEGdenoiseNet).
   - multi-canal (ICUNet, ART d'origine) : bloc 30x1024 d'un coup, via utils
   - mono-canal  (DuoCL, GCTNet, ART reentraine) : canal par canal, fenetres de 512
 
-    python clean.py ART EEGdenoiseNet
-    python clean.py DuoCL EEGdenoiseNet 1-10
-    python clean.py ICUNet original
+    python Clean.py ART EEGdenoiseNet
+    python Clean.py DuoCL EEGdenoiseNet 1-10
+    python Clean.py ICUNet original
 
 Sortie : Output/Nettoyé/S###/{modele}_{dataset}-epo.fif  (un fichier par sujet).
 Le registre des modeles (MODEL_REGISTRY) est defini ici et importe par Evaluation.py.
@@ -24,10 +24,10 @@ import numpy as np
 import torch
 import mne
 
-import utils
-from model.DuoCL import DuoCL
-from model.GCTNet import Generator
-from model import tf_model, tf_data
+import Utils
+from Model.DuoCL import DuoCL
+from Model.GCTNet import Generator
+from Model import tf_model, tf_data
 
 mne.set_log_level("ERROR")
 
@@ -35,13 +35,13 @@ mne.set_log_level("ERROR")
 BASE = Path(__file__).resolve().parent
 PRETRAITE = BASE / "Output" / "Prétraité"     # entree : essais prétraités
 NETTOYE = BASE / "Output" / "Nettoyé"         # sortie : essais debruites
-MODEL_DIR = BASE / "model"
+MODEL_DIR = BASE / "Model"
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 WIN = 512                          # fenetre des modeles mono-canal (EEGdenoiseNet)
 
 # Registre des modeles debruitables : (nom, dataset) -> configuration.
-#   kind = "multi"  : reseau 30->30 canaux, applique via utils.clean_epoch(mode)
+#   kind = "multi"  : reseau 30->30 canaux, applique via Utils.clean_epoch(mode)
 #   kind = "single" : reseau mono-canal (DuoCL/GCTNet), applique canal par canal
 #   kind = "art512" : ART mono-canal make_model(1,1), applique canal par canal
 # Pour ajouter un modele : ajouter une entree ici (+ les poids dans model/<folder>/).
@@ -152,7 +152,7 @@ def ensure_cleaned(subject, entry, cache_key, model_obj):
     cleaned = np.empty_like(data)
     for i, epoch in enumerate(data):
         if entry["kind"] == "multi":
-            cleaned[i] = utils.clean_epoch(epoch, entry["mode"])
+            cleaned[i] = Utils.clean_epoch(epoch, entry["mode"])
         else:
             cleaned[i] = denoise_epoch_single(epoch, model_obj, entry["kind"])
     out.parent.mkdir(parents=True, exist_ok=True)

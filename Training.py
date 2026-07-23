@@ -37,13 +37,13 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from model import tf_model, tf_data
-from model.GCTNet import Generator, Discriminator
-from model.DuoCL import DuoCL
+from Model import tf_model, tf_data
+from Model.GCTNet import Generator, Discriminator
+from Model.DuoCL import DuoCL
 
 # ----------------------------- Chemins -----------------------------------
 BASE = Path(__file__).resolve().parent
-MODEL_DIR = BASE / "model"
+MODEL_DIR = BASE / "Model"
 DATA_DIR = BASE / "Databases" / "EEGdenoiseNet" / "data"
 OUT_ODS = BASE / "resultats_accuracy.ods"      # feuilles d'evolution MSE
 

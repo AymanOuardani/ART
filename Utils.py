@@ -7,14 +7,14 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from model import cumbersome_model2
-from model import UNet_family
-from model import UNet_attention
-from model import tf_model
-from model import tf_data
+from Model import cumbersome_model2
+from Model import UNet_family
+from Model import UNet_attention
+from Model import tf_model
+from Model import tf_data
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-MODEL_DIR = Path(__file__).resolve().parent / "model"
+MODEL_DIR = Path(__file__).resolve().parent / "Model"
 _CACHE = {}
 
 

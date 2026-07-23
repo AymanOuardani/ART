@@ -4,7 +4,7 @@ import torch
 import random
 import numpy as np
 from torch.autograd import Variable
-from model.tf_model import subsequent_mask
+from Model.tf_model import subsequent_mask
 from torch.utils.data import Dataset
 
 
