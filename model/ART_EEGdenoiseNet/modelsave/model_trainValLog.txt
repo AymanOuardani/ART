@@ -1,0 +1,4 @@
+
+=== ART | bruit EOG | epochs 1 | N 2 ===
+[ART] epoch 1/1  train_loss 0.1693  val_rmse 0.4202
+meilleur val_rmse : 0.4202

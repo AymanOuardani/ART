@@ -66,17 +66,4 @@ des notes LaTeX, et du code pour le travail sur le motor imagery.
   # Visualiser avant/après débruitage (ART) :
   python ArtifactRemovalTransformer/EEG_Visualizer.py
 
-==========================================================================
-
-
-
-
-
-
-
-
-
-
-
-z-score par fenetre
-Application du modèle \ Les tableaux avec pour chaque modèle (avec les écarts-types) \ Lancer l'entrainement pour duoCL et GCTNet \ Reproduction des cartographies \ Calcul de MSE pour duoCL et GCTNet \ Code d'entrainement d'ART sur denoiseNet
+=======================================================================

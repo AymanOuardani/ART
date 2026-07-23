@@ -1,5 +1,4 @@
 # --- Environnement virtuel Python (ne jamais versionner) ---
-ArtifactRemovalTransformer/ART312/
 **/venv/
 **/.venv/
 **/env/
@@ -10,15 +9,9 @@ ArtifactRemovalTransformer/ART312/
 *.tar
 *.ckpt
 
-# --- Donnees publiques tierces (lourdes, telechargeables separement) ---
-EEGdenoiseNet/
-Code/Brut/
-Code/Prétraité/
-Code/Nettoyé/
-Code/Final/
-
-# --- Donnees de demo GCTNet-main (lourdes, regenerables via son preprocess) ---
-GCTNet-main/**/data/*.npy
+# --- Donnees (lourdes, telechargeables/regenerables) ---
+Databases/
+Output/
 
 # --- Telechargements incomplets / fichiers temporaires ---
 *.crdownload
