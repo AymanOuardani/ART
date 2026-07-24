@@ -13,12 +13,14 @@ mne.set_log_level("ERROR")
 #Chemins des fichiers
 Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
+Nettoye_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé_ICLABEL")
 
 #Nom de fichier selon le signal (brut = prétraité, sans débruitage)
 fichiers = {"brut": None,
             "ART": "ART_original-epo.fif",
             "glue": "ART_glue-epo.fif",
-            "ICUNet": "ICUNet-epo.fif"}
+            "ICUNet": "ICUNet-epo.fif",
+            "ICLABEL": None}   # cas spécial (dossier + repos à retirer), voir plus bas
 
 #Paramètres CSP + LDA (identiques à la référence MNE)
 sfreq = 256
@@ -28,7 +30,7 @@ N_iter = 10
 
 #Ligne de commande : quel signal évaluer
 parser = ap.ArgumentParser(description="Évaluation CSP + LDA")
-parser.add_argument("Signal", choices=list(fichiers), help="signal à évaluer")
+parser.add_argument("Method", choices=list(fichiers), help="signal à évaluer")
 args = parser.parse_args()
 
 
@@ -47,17 +49,21 @@ cv = ShuffleSplit(N_iter, test_size=0.2, random_state=42)
 moyennes = []
 for s in range(1, 110):
     sujet_id = "S" + str(s).zfill(3)
-    if fichiers[args.Signal] is None:
+    if args.Method == "brut":
         fichier = Pretraite / (sujet_id + "-epo.fif")
+    elif args.Method == "ICLABEL":
+        fichier = Nettoye_ICLABEL / sujet_id / (sujet_id + "-ICA.fif")
     else:
-        fichier = Nettoye / sujet_id / fichiers[args.Signal]
+        fichier = Nettoye / sujet_id / fichiers[args.Method]
     if not fichier.exists():
         continue
     epochs = mne.read_epochs(fichier, preload=True)
+    if args.Method == "ICLABEL":
+        epochs = epochs["gauche", "droite"]           # retire le repos (éval 2 classes)
     X = epochs.get_data()
     y = epochs.events[:, 2]                            # 1=gauche, 2=droite
     scores = cross_val_score(clf, prep(X), y, cv=cv)
     moyennes.append(scores.mean())
-    print(f"  {args.Signal:6s} {sujet_id} : moyenne {scores.mean():.2f}")
+    print(f"  {args.Method:6s} {sujet_id} : moyenne {scores.mean():.2f}")
 
-print(f"\nMoyenne finale ({args.Signal}) : {np.mean(moyennes):.3f} +/- {np.std(moyennes):.3f}")
+print(f"\nMoyenne finale ({args.Method}) : {np.mean(moyennes):.3f} +/- {np.std(moyennes):.3f}")
