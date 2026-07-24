@@ -12,6 +12,7 @@
 # --- Donnees (lourdes, telechargeables/regenerables) ---
 Databases/
 Output/
+Fitted_ICA/
 
 # --- Telechargements incomplets / fichiers temporaires ---
 *.crdownload
