@@ -68,7 +68,6 @@ python Evaluation.py ART
 | Modèle | Description |
 |--------|--------------|
 | `ART` | Transformer ART, poids d'origine |
-| `ART_EEGdenoiseNet` | ART réentraîné sur EEGdenoiseNet (mono-canal) |
 | `ICUNet` / `ICUNet++` / `ICUNet_attn` | familles IC-U-Net |
 | `DuoCL` / `GCTNet` | débruiteurs mono-canal (EEGdenoiseNet) |
 

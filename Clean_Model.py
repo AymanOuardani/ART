@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import mne as mne
 import Utils
-from Model import tf_model, tf_data
 from Model.DuoCL import DuoCL
 from Model.GCTNet import Generator
 
@@ -22,15 +21,13 @@ WIN = 512   # fenêtre des modèles mono-canal (EEGdenoiseNet)
 #Modèles de débruitage disponibles (on nettoie toujours EEGBCI)
 #  multi  : réseau 30->30 canaux, appliqué via Utils.clean_epoch
 #  single : réseau mono-canal DuoCL/GCTNet, appliqué canal par canal
-#  art512 : ART mono-canal make_model(1,1), appliqué canal par canal
 MODELES = {
-    "ICUNet":            {"kind": "multi",  "mode": "ICUNet"},
-    "ICUNet++":          {"kind": "multi",  "mode": "ICUNet++"},
-    "ICUNet_attn":       {"kind": "multi",  "mode": "ICUNet_attn"},
-    "ART":               {"kind": "multi",  "mode": "ART"},
-    "ART_EEGdenoiseNet": {"kind": "art512", "dossier": "ART_EEGdenoiseNet"},
-    "DuoCL":             {"kind": "single", "arch": "DuoCL",  "dossier": "DuoCL"},
-    "GCTNet":            {"kind": "single", "arch": "GCTNet", "dossier": "GCTNet"},
+    "ICUNet":      {"kind": "multi",  "mode": "ICUNet"},
+    "ICUNet++":    {"kind": "multi",  "mode": "ICUNet++"},
+    "ICUNet_attn": {"kind": "multi",  "mode": "ICUNet_attn"},
+    "ART":         {"kind": "multi",  "mode": "ART"},
+    "DuoCL":       {"kind": "single", "arch": "DuoCL",  "dossier": "DuoCL"},
+    "GCTNet":      {"kind": "single", "arch": "GCTNet", "dossier": "GCTNet"},
 }
 
 #Ligne de commande
@@ -49,13 +46,6 @@ else:
     sujets = [int(s) for s in args.Sujets.split(",")]
 
 
-def art_forward(model, src):
-    # src : (B, 1, T). Encodeur = bruité complet, décodeur = bruité décalé (masque causal)
-    batch = tf_data.Batch(src, src, 0)
-    out = model.forward(batch.src, batch.src[:, :, 1:], batch.src_mask, batch.trg_mask)
-    return model.generator(out).permute(0, 2, 1).squeeze(1)     # (B, T-1)
-
-
 def charge_modele_mono(entry):
     # Construit le réseau mono-canal et charge ses poids (BEST de préférence)
     dossier = Model_Dir / entry["dossier"] / "modelsave"
@@ -63,12 +53,7 @@ def charge_modele_mono(entry):
     if not ckpt.exists():
         ckpt = dossier / "checkpoint.pth.tar"
     state = torch.load(ckpt, map_location=device, weights_only=False)["state_dict"]
-    if entry["kind"] == "art512":
-        model = tf_model.make_model(1, 1, N=2)
-    elif entry["arch"] == "DuoCL":
-        model = DuoCL(WIN)
-    else:
-        model = Generator(WIN)
+    model = DuoCL(WIN) if entry["arch"] == "DuoCL" else Generator(WIN)
     model.load_state_dict(state)
     return model.to(device).eval()
 
@@ -81,7 +66,7 @@ def fenetres(total):
     return debuts
 
 
-def debruite_epoch_mono(epoch, model, kind):
+def debruite_epoch_mono(epoch, model):
     # epoch (30, T) -> (30, T), canal par canal, fenêtres de WIN=512 (z-score par fenêtre)
     C, T = epoch.shape
     segs, meta = [], []
@@ -94,11 +79,7 @@ def debruite_epoch_mono(epoch, model, kind):
             meta.append((ch, st, m, s))
     x = torch.from_numpy(np.stack(segs)).to(device).unsqueeze(1)     # (N, 1, WIN)
     with torch.no_grad():
-        if kind == "art512":
-            p = art_forward(model, x)
-            p = torch.cat([p, torch.zeros(p.shape[0], 1, device=device)], dim=1)
-        else:
-            p = model(x).view(x.shape[0], -1)
+        p = model(x).view(x.shape[0], -1)
     p = p.cpu().numpy()
     sortie = np.array(epoch, copy=True)
     for k, (ch, st, m, s) in enumerate(meta):
@@ -107,7 +88,7 @@ def debruite_epoch_mono(epoch, model, kind):
 
 
 #Chargement du modèle mono-canal si nécessaire (les modèles multi passent par Utils)
-model_obj = charge_modele_mono(entry) if entry["kind"] in ("single", "art512") else None
+model_obj = charge_modele_mono(entry) if entry["kind"] == "single" else None
 
 #Débruitage sujet par sujet, avec mise en cache dans Nettoyé/
 n_ok = n_skip = n_absent = 0
@@ -129,7 +110,7 @@ for s in sujets:
         if entry["kind"] == "multi":
             data_clean[i] = Utils.clean_epoch(epoch, entry["mode"])
         else:
-            data_clean[i] = debruite_epoch_mono(epoch, model_obj, entry["kind"])
+            data_clean[i] = debruite_epoch_mono(epoch, model_obj)
 
     epochs_clean = mne.EpochsArray(data_clean, epochs.info, epochs.events,
                                    tmin=epochs.tmin, event_id=epochs.event_id)

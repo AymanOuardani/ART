@@ -17,7 +17,6 @@ Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 #Nom de fichier selon le signal (brut = prétraité, sans débruitage)
 fichiers = {"brut": None,
             "ART": "ART.fif",
-            "ART_EEGdenoiseNet": "ART_EEGdenoiseNet.fif",
             "ICUNet": "ICUNet.fif",
             "ICUNet++": "ICUNet++.fif",
             "ICUNet_attn": "ICUNet_attn.fif",

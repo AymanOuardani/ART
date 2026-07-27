@@ -5,6 +5,7 @@ Adapte de ArtifactRemovalTransformer/utils.py, pour des donnees deja pretraitees
 
 from pathlib import Path
 import numpy as np
+import pandas as pd
 import torch
 
 from Model import cumbersome_model2
@@ -70,3 +71,24 @@ def clean_epoch(epoch, mode):
     print(std)
     print(avg)
     return decoded * std + avg
+
+
+def sauve_feuille_loso(fichier, sujet, mse_train, mse_eval, pertes_batches):
+    # Ecrit/actualise une feuille (nom = sujet exclu) dans un classeur Excel :
+    #   - epoch_train_mse / epoch_eval_mse : evolution globale (1 valeur par epoch)
+    #   - batch_epoch_N : evolution locale des pertes batch au sein de l'epoch N
+    colonnes = {"epoch_train_mse": mse_train, "epoch_eval_mse": mse_eval}
+    for i, pertes in enumerate(pertes_batches):
+        colonnes[f"batch_epoch_{i + 1}"] = pertes
+    feuille = pd.DataFrame({nom: pd.Series(vals) for nom, vals in colonnes.items()})
+
+    feuilles = {}
+    if fichier.exists():
+        try:
+            feuilles = pd.read_excel(fichier, sheet_name=None, engine="openpyxl")
+        except Exception:
+            feuilles = {}
+    feuilles[sujet] = feuille
+    with pd.ExcelWriter(fichier, engine="openpyxl") as writer:
+        for nom, df in feuilles.items():
+            df.to_excel(writer, sheet_name=str(nom)[:31], index=False)
