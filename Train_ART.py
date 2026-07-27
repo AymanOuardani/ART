@@ -7,9 +7,12 @@ from Model import tf_model, tf_data
 
 mne.set_log_level("ERROR")
 
-#Chemins des fichiers
-Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")   # entrée bruitée
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")                   # cible propre (ICLABEL.fif)
+#Chemins des fichiers (relatifs au script : marche sur toutes les machines)
+Racine = pl.Path(__file__).resolve().parent
+Pretraite_Total = Racine / "Output" / "Prétraité_Total"   # entrée bruitée
+Nettoye = Racine / "Output" / "Nettoyé"                   # cible propre (ICLABEL.fif)
+Sortie = Racine / "Model" / "ART_ICLABEL" / "modelsave"
+Sortie.mkdir(parents=True, exist_ok=True)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -74,6 +77,10 @@ for sujet_test in sujets:
         pred = model.generator(out).permute(0, 2, 1)
         mse = loss_fn(pred, Y_te[:, :, 1:]).item()
     mses.append(mse)
+
+    #sauvegarde du checkpoint (un par sujet exclu)
+    torch.save({"state_dict": model.state_dict(), "epoch": n_epochs, "mse_test": mse},
+               Sortie / f"{sujet_test}.pth.tar")
     print(f"  {sujet_test} : mse {mse:.4f}", flush=True)
 
 print(f"\nMSE moyenne (leave-one-subject-out) : {np.mean(mses):.4f} +/- {np.std(mses):.4f}")
