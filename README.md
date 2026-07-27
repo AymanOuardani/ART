@@ -30,7 +30,7 @@ ART-ICUNET/
 ├── Model/               # téléchargé  (architectures + poids .pth.tar)
 ├── Output/              # créé automatiquement par les scripts
 ├── Pretraitement.py  ICA.py  ICLABEL.py
-├── Clean_Model.py  Training_Model.py  Evaluation.py  Visualize.py  Utils.py
+├── Clean_Model.py  Train_ART.py  Training_Model.py  Evaluation.py  Visualize.py  Utils.py
 ```
 
 **3. Installer les dépendances** (Python 3.10–3.13)
@@ -82,17 +82,20 @@ python Clean_Model.py GCTNet --force       # recalcule même si déjà en cache
 ## Entraînement des débruiteurs
 
 ```bash
-python Training_Model.py ART --device gpu
-python Training_Model.py all --device cpu           # ART + DuoCL + GCTNet
-python Training_Model.py ICLABEL                     # ART neuf, entraîné sur les paires ICLabel
+python Train_ART.py                                 # ART neuf, entraîné sur les paires ICLabel (Output/Nettoyé)
+
+python Training_Model.py DuoCL --device gpu
+python Training_Model.py all --device cpu           # DuoCL + GCTNet
 ```
 
-- **Modèle** : `ART` · `DuoCL` · `GCTNet` · `ICLABEL` · `all`
-- Options (ART/DuoCL/GCTNet, sur EEGdenoiseNet) : `--device {auto,cpu,gpu}` · `--gpu N` ·
-  `--noise {EOG,EMG,Hybrid}` · `--epochs N` · `--batch_size N` · `--layers N`
+- **`Train_ART.py`** : pas d'argument, hyperparamètres fixes (epochs 60, batch 32, lr 0.01, Adam) —
+  reproduit les réglages du papier. Nécessite `Output/Nettoyé/S###/ICLABEL.fif` (cf. `ICLABEL.py`).
+- **`Training_Model.py`** (DuoCL/GCTNet, sur EEGdenoiseNet) : `DuoCL` · `GCTNet` · `all`.
+  Options : `--device {auto,cpu,gpu}` · `--gpu N` · `--noise {EOG,EMG,Hybrid}` ·
+  `--epochs N` · `--batch_size N`.
 
 Produit les poids dans `Model/<dossier>/modelsave/checkpoint.pth.tar` (+ `BEST_checkpoint.pth.tar`)
-et l'évolution du MSE dans `resultats_accuracy.ods`.
+et l'évolution du MSE dans `resultats_accuracy.ods` (Training_Model.py uniquement).
 
 ---
 
@@ -117,10 +120,11 @@ Signaux disponibles : `brut` · `pretraite` · `ART` · `ICUNet` · `ICA` · `IC
 | `ICA.py` | ICA (infomax) + sélection manuelle des composantes à retirer |
 | `ICLABEL.py` | ICA + tri automatique des composantes via ICLabel, tous les sujets |
 | `Clean_Model.py` | applique **un** modèle de débruitage → cache dans `Output/Nettoyé/` |
-| `Training_Model.py` | entraîne les débruiteurs (ART/DuoCL/GCTNet sur EEGdenoiseNet, ou ART sur ICLabel) |
+| `Train_ART.py` | entraîne un ART neuf sur les paires ICLabel (EEGBCI) |
+| `Training_Model.py` | entraîne DuoCL/GCTNet sur EEGdenoiseNet |
 | `Evaluation.py` | décodage gauche/droite **CSP + LDA**, affiche la précision moyenne |
 | `Visualize.py` | inspection des signaux (brut / prétraité / débruité) |
 | `Utils.py` | chargement d'un modèle + débruitage d'un essai (multi-canal) |
 
-> Ordre logique : `Training_Model` (une fois, pour obtenir les poids) puis
+> Ordre logique : `Train_ART` / `Training_Model` (une fois, pour obtenir les poids) puis
 > `Pretraitement → Clean_Model → Evaluation` pour chaque modèle à comparer.
