@@ -7,7 +7,7 @@ mne.set_log_level("ERROR")
 
 #Chemins des fichiers
 Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
-Nettoye_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé_ICLABEL")
+Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 
 #Traitement automatique de TOUS les sujets
 for s in range(1, 110):
@@ -28,10 +28,10 @@ for s in range(1, 110):
     ica.exclude = [i for i, c in enumerate(labels["labels"]) if c not in ("brain", "other")]
 
     #Application de l'ICA et sauvegarde des epochs nettoyés
-    out = Nettoye_ICLABEL / sujet_id / (sujet_id + "-ICA.fif")
+    out = Nettoye / sujet_id / "ICLABEL.fif"
     out.parent.mkdir(parents=True, exist_ok=True)
     ica.apply(epochs)
     epochs.save(out, overwrite=True)
     print(sujet_id, ": composantes retirées", ica.exclude, "(", len(ica.exclude), "/30 )", flush=True)
 
-print("Termine : tous les sujets nettoyés (ICLabel) dans", Nettoye_ICLABEL)
+print("Termine : tous les sujets nettoyés (ICLabel) dans", Nettoye)

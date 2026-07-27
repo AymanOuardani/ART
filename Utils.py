@@ -64,7 +64,9 @@ def decode_data(data, mode):
 
 def clean_epoch(epoch, mode):
     # z-score global -> debruitage -> retour a l'echelle d'origine
-    std = np.std(epoch)
-    avg = np.average(epoch)
+    std = np.std(epoch, axis=0)
+    avg = np.average(epoch, axis=0)
     decoded = decode_data((epoch - avg) / std, mode)
+    print(std)
+    print(avg)
     return decoded * std + avg

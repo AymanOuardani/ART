@@ -10,14 +10,15 @@ Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
 Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 Nettoye_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé_Total")
-Nettoye_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé_ICLABEL")
 
 #Nom du fichier débruité selon le modèle (dans Nettoyé/SXXX/)
-fichiers_apres = {"ART": "ART_original-epo.fif", "ICUNet": "ICUNet-epo.fif"}
+fichiers_apres = {"ART": "ART.fif", "ART_EEGdenoiseNet": "ART_EEGdenoiseNet.fif",
+                  "ICUNet": "ICUNet.fif", "ICUNet++": "ICUNet++.fif", "ICUNet_attn": "ICUNet_attn.fif",
+                  "DuoCL": "DuoCL.fif", "GCTNet": "GCTNet.fif", "ICLABEL": "ICLABEL.fif"}
 
 #Ligne de commande : quoi visualiser + numéro du sujet
 parser = ap.ArgumentParser(description="Visualisation d'un sujet")
-parser.add_argument("Signal", choices=["brut", "pretraite", "ART", "ICUNet", "ICA", "ICLABEL"],
+parser.add_argument("Signal", choices=["brut", "pretraite", *fichiers_apres, "ICA"],
                     help="quoi visualiser")
 parser.add_argument("Sujet", type=int, help="Numéro du sujet (1-109)")
 args = parser.parse_args()
@@ -37,12 +38,12 @@ elif args.Signal == "pretraite":
 
 else:
     #avant (prétraité) vs après (débruité) en 2 fenêtres séparées
-    if args.Signal == "ICLABEL":
-        fichier_avant = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
-        fichier_apres = Nettoye_ICLABEL / sujet_id / (sujet_id + "-ICA.fif")
-    elif args.Signal == "ICA":
+    if args.Signal == "ICA":
         fichier_avant = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
         fichier_apres = Nettoye_Total / sujet_id / (sujet_id + "-ICA.fif")
+    elif args.Signal == "ICLABEL":
+        fichier_avant = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
+        fichier_apres = Nettoye / sujet_id / fichiers_apres[args.Signal]
     else:
         fichier_avant = Pretraite / (sujet_id + "-epo.fif")
         fichier_apres = Nettoye / sujet_id / fichiers_apres[args.Signal]

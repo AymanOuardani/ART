@@ -13,14 +13,17 @@ mne.set_log_level("ERROR")
 #Chemins des fichiers
 Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
-Nettoye_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé_ICLABEL")
 
 #Nom de fichier selon le signal (brut = prétraité, sans débruitage)
 fichiers = {"brut": None,
-            "ART": "ART_original-epo.fif",
-            "glue": "ART_glue-epo.fif",
-            "ICUNet": "ICUNet-epo.fif",
-            "ICLABEL": None}   # cas spécial (dossier + repos à retirer), voir plus bas
+            "ART": "ART.fif",
+            "ART_EEGdenoiseNet": "ART_EEGdenoiseNet.fif",
+            "ICUNet": "ICUNet.fif",
+            "ICUNet++": "ICUNet++.fif",
+            "ICUNet_attn": "ICUNet_attn.fif",
+            "DuoCL": "DuoCL.fif",
+            "GCTNet": "GCTNet.fif",
+            "ICLABEL": "ICLABEL.fif"}   # ICLABEL garde le repos T0 : retiré plus bas
 
 #Paramètres CSP + LDA (identiques à la référence MNE)
 sfreq = 256
@@ -40,8 +43,9 @@ def prep(X):
     return X[:, :, crop]                                # fenêtre [1,2]s
 
 
-#CSP + LDA
-clf = Pipeline([("CSP", CSP(n_components=4, reg=None, log=True, norm_trace=False)),
+#CSP + LDA (régularisation pour ICLabel : données rang-déficientes après retrait de composantes ICA)
+reg = "ledoit_wolf" if args.Method == "ICLABEL" else None
+clf = Pipeline([("CSP", CSP(n_components=4, reg=reg, log=True, norm_trace=False)),
                 ("LDA", LinearDiscriminantAnalysis())])
 cv = ShuffleSplit(N_iter, test_size=0.2, random_state=42)
 
@@ -51,8 +55,6 @@ for s in range(1, 110):
     sujet_id = "S" + str(s).zfill(3)
     if args.Method == "brut":
         fichier = Pretraite / (sujet_id + "-epo.fif")
-    elif args.Method == "ICLABEL":
-        fichier = Nettoye_ICLABEL / sujet_id / (sujet_id + "-ICA.fif")
     else:
         fichier = Nettoye / sujet_id / fichiers[args.Method]
     if not fichier.exists():
