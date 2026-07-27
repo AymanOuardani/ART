@@ -50,8 +50,8 @@ for sujet_test in sujets:
     X_tr = torch.from_numpy(np.concatenate([x for s, (x, y) in sujets.items() if s != sujet_test]))
     Y_tr = torch.from_numpy(np.concatenate([y for s, (x, y) in sujets.items() if s != sujet_test]))
     X_te, Y_te = sujets[sujet_test]
-    X_te = torch.from_numpy(X_te).to(device)
-    Y_te = torch.from_numpy(Y_te).to(device)
+    X_te = torch.from_numpy(X_te)   # reste sur CPU, envoyé sur GPU batch par batch (comme le train)
+    Y_te = torch.from_numpy(Y_te)
 
     #DataLoader : mélange + découpage en batchs, à la place de perm/idx à la main
     loader = DataLoader(TensorDataset(X_tr, Y_tr), batch_size=batch_size, shuffle=True)
@@ -80,13 +80,18 @@ for sujet_test in sujets:
         pertes_batches.append(pertes)
         mse_train_par_epoch.append(sum(pertes) / len(pertes))
 
-        #évaluation sur le sujet exclu, après cette epoch
+        #évaluation sur le sujet exclu, après cette epoch (batchée : le sujet entier d'un coup sature le GPU)
         model.eval()
+        pertes_eval = []
         with torch.no_grad():
-            batch = tf_data.Batch(X_te, Y_te, pad=0)
-            out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
-            pred = model.generator(out).permute(0, 2, 1)
-            mse_eval = loss_fn(pred, Y_te[:, :, 1:]).item()
+            for j in range(0, len(X_te), batch_size):
+                src = X_te[j:j + batch_size].to(device)
+                trg = Y_te[j:j + batch_size].to(device)
+                batch = tf_data.Batch(src, trg, pad=0)
+                out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
+                pred = model.generator(out).permute(0, 2, 1)
+                pertes_eval.append(loss_fn(pred, trg[:, :, 1:]).item())
+        mse_eval = sum(pertes_eval) / len(pertes_eval)
         mse_eval_par_epoch.append(mse_eval)
 
         #checkpoint de cette epoch : modelsave/SujetXXX/Epoch_NY/checkpoint.pth.tar
