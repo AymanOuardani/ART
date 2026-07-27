@@ -89,7 +89,9 @@ python Training_Model.py all --device cpu           # DuoCL + GCTNet
 ```
 
 - **`Train_ART.py`** : pas d'argument, hyperparamètres fixes (epochs 60, batch 32, lr 0.01, Adam) —
-  reproduit les réglages du papier. Nécessite `Output/Nettoyé/S###/ICLABEL.fif` (cf. `ICLABEL.py`).
+  reproduit les réglages du papier. Validation en **leave-one-subject-out** : un modèle est
+  entraîné sur tous les sujets sauf un, puis évalué (MSE) sur le sujet exclu (répété pour chaque sujet).
+  Nécessite `Output/Nettoyé/S###/ICLABEL.fif` (cf. `ICLABEL.py`).
 - **`Training_Model.py`** (DuoCL/GCTNet, sur EEGdenoiseNet) : `DuoCL` · `GCTNet` · `all`.
   Options : `--device {auto,cpu,gpu}` · `--gpu N` · `--noise {EOG,EMG,Hybrid}` ·
   `--epochs N` · `--batch_size N`.
