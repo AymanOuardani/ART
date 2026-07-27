@@ -7,11 +7,10 @@ from Model import tf_model, tf_data
 
 mne.set_log_level("ERROR")
 
-#Chemins des fichiers (relatifs au script : marche sur toutes les machines)
-Racine = pl.Path(__file__).resolve().parent
-Pretraite_Total = Racine / "Output" / "Prétraité_Total"   # entrée bruitée
-Nettoye = Racine / "Output" / "Nettoyé"                   # cible propre (ICLABEL.fif)
-Sortie = Racine / "Model" / "ART_ICLABEL" / "modelsave"
+#Chemins des fichiers
+Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")   # entrée bruitée
+Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")                   # cible propre (ICLABEL.fif)
+Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL\modelsave")
 Sortie.mkdir(parents=True, exist_ok=True)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
