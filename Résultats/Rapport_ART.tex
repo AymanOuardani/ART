@@ -1,0 +1,249 @@
+% ============================================================================
+%  Rapport_ART.tex — Récap par sujet exclu (LOSO), débruitage ART/ICA/ICLabel
+%
+%  Pour chaque sujet : taux de classification CSP+LDA par signal (rempli
+%  automatiquement par Evaluation.py), MSE par rapport au signal nettoyé par
+%  ICLabel (rempli par mse_eval.py, ex. ICA ou ART), et évolution du MSE
+%  d'entraînement LOSO (figure générée par mse_graph.py).
+%
+%  Compilation : pdflatex Rapport_ART.tex   (x2 pour la table des matières)
+%  Recompilé automatiquement par Evaluation.py / mse_graph.py / mse_eval.py
+%  (voir Utils.recompile_latex) à chaque fois qu'une valeur est mise à jour.
+%
+%  Tableaux et figures par sujet : générés dans data/SXXX_*.tex et
+%  Images/SXXX_mse.png, chargés via \IfFileExists (le rapport compile même
+%  si rien n'a encore été calculé pour un sujet donné).
+% ============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage[a4paper,top=1.6cm,bottom=1.6cm,left=2cm,right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{mathpazo}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+
+\setcounter{tocdepth}{2}
+\setlength{\parindent}{0pt}
+
+\hypersetup{
+  pdftitle={Récap ART/ICA/ICLabel — Débruitage EEG par sujet},
+  pdfauthor={Aymen Ouardani},
+}
+
+% --- En-tête de bloc de sujet (numéro entouré + titre) ---------------------
+\newcommand{\circled}[1]{%
+  \tikz[baseline=(char.base)]{\node[shape=circle, draw, line width=0.4pt, inner sep=1.6pt] (char) {\small #1};}}
+\usepackage{tikz}
+
+% --- Tableaux générés (accuracy / MSE), un fichier par sujet ---------------
+% NB : \input DANS un tabular casse l'alignement avec cette distribution LaTeX ;
+% \loaddata charge donc les données AVANT le tableau (definit \accuracyrows /
+% \mserow), qui sont ensuite juste utilisées comme commandes DANS le tableau.
+\newcommand{\loaddata}[1]{% #1 = SXXX, à appeler juste avant les tableaux du sujet
+  \IfFileExists{data/#1_accuracy.tex}{\input{data/#1_accuracy.tex}}{%
+    \def\accuracyrows{\itshape aucune évaluation enregistrée & (lancer Evaluation.py) \\}}%
+  \IfFileExists{data/#1_mse.tex}{\input{data/#1_mse.tex}}{%
+    \def\mserow{\itshape non calculé & (lancer mse\_eval.py) \\}}%
+}
+
+% --- Courbe d'évolution du MSE (LOSO), une par sujet -----------------------
+\graphicspath{{Images/}{./Images/}}   % PNG générés par mse_graph.py (Images/SXXX_mse.png)
+
+% \IfFileExists si le PNG est présent dans Images/, sinon un cadre
+% (le rapport compile donc avant même d'avoir lancé Train_ART.py / mse_graph.py).
+\newcommand{\lossfig}[1]{% #1 = SXXX
+  \begin{figure}[H]\centering
+  \IfFileExists{Images/#1_mse.png}{%
+    \includegraphics[width=0.85\linewidth]{#1_mse.png}}{%
+    \fbox{\parbox[c][5cm][c]{0.80\linewidth}{\centering\scriptsize\ttfamily #1\_mse.png\\[3pt]%
+      \normalfont\itshape(figure absente : générer avec\\ \texttt{python mse\_graph.py N})}}}%
+  \caption{#1 — Évolution du MSE (LOSO) : train vs eval par epoch, et détail batch par batch.}
+  \end{figure}}
+
+% --- Bloc complet d'un sujet (accuracy + MSE + figure LOSO) ----------------
+\newcommand{\subjectreport}[1]{% #1 = SXXX
+  \subsection{Sujet #1}
+  \loaddata{#1}
+
+  \begin{table}[H]
+  \centering
+  \begin{tabular}{lc}
+  \toprule
+  Signal & Accuracy \\
+  \midrule
+  \accuracyrows
+  \bottomrule
+  \end{tabular}
+  \caption{#1 — Accuracy de classification.}
+  \end{table}
+
+  \begin{table}[H]
+  \centering
+  \begin{tabular}{lc}
+  \toprule
+  Comparaison & MSE \\
+  \midrule
+  \mserow
+  \bottomrule
+  \end{tabular}
+  \caption{#1 — Erreur quadratique moyenne par rapport au signal nettoyé par ICLabel.}
+  \end{table}
+
+  \lossfig{#1}
+  \clearpage
+}
+
+\begin{document}
+
+% ####################################################################
+% #                          PAGE DE GARDE                           #
+% ####################################################################
+\begin{titlepage}
+\centering
+\vspace*{1cm}
+
+{\scshape\large École Centrale de Nantes\par}
+\vspace{0.4cm}
+{\scshape\large Laboratoire ICONIC — CHU Nantes\par}
+
+\vfill
+{\Huge\bfseries Récapitulatif par sujet\par}
+\vspace{0.5cm}
+{\Large\bfseries Débruitage EEG ART / ICA / ICLabel (Motor-Imagery)\par}
+\vspace{0.8cm}
+{\large\itshape Comparaison CSP+LDA et MSE, sujet par sujet\par}
+
+\vfill
+\begin{minipage}{0.45\linewidth}
+  \raggedright
+  \textbf{Auteur :}\\
+  Ayman OUARDANI
+\end{minipage}\hfill
+\begin{minipage}{0.45\linewidth}
+  \raggedleft
+  \textbf{Encadrant(s) :}\\
+  Aurélien VAN LANGHENHOVE
+\end{minipage}
+
+\vspace{1.2cm}
+{\large \today\par}
+\end{titlepage}
+
+% ####################################################################
+% #                             RÉSUMÉ                               #
+% ####################################################################
+\clearpage
+\section*{Introduction}
+\addcontentsline{toc}{section}{Introduction}
+\noindent
+Nous avons identifié l'article \textit{« Augmenting brain-computer interfaces with
+ART: An artifact removal transformer for reconstructing multichannel EEG
+signals »} de Chuang \textit{et al.}, qui présente une nouvelle méthode de
+débruitage appelée \textbf{ART} (\textit{Artifact Removal Transformer}) et montre
+de bons résultats sur des données d'imagerie motrice (\textit{motor-imagery}).
+C'est ce qui motive notre choix d'utiliser la base \textbf{Schalk \textit{et al.}
+(2004), Motor Imagery (BCI2000)}, et d'y entraîner ART en prenant comme signaux
+propres ceux nettoyés par \textbf{ICLabel}. L'objectif est de tester si ART peut
+apprendre à nettoyer automatiquement les signaux aussi bien, voire mieux,
+qu'ICLabel.
+
+\vspace{0.5em}
+\noindent
+Pour chaque sujet exclu (protocole leave-one-subject-out), ce document rapporte :
+le taux de classification gauche/droite (CSP+LDA) sur les différents signaux
+débruités disponibles (brut, ICA manuelle, ICLabel automatique, ART, ...) ;
+l'erreur quadratique moyenne (MSE) entre le signal nettoyé par ICA et celui
+nettoyé par ICLabel ; ainsi que l'évolution du MSE (train/eval) pendant
+l'entraînement leave-one-subject-out d'ART.
+
+\vspace{0.5em}
+\noindent\textbf{Mots-clés :} EEG, BCI, ART, ICA, ICLabel, CSP, MSE, motor-imagery.
+
+% ####################################################################
+% #                       TABLE DES MATIÈRES                         #
+% ####################################################################
+\clearpage
+\tableofcontents
+
+% ####################################################################
+% #                    INTRODUCTION / MÉTHODOLOGIE                   #
+% ####################################################################
+\clearpage
+\section{Méthodologie}
+
+\subsection{Taux de classification (CSP+LDA)}
+Pour mesurer à quel point l'intention motrice (main gauche vs main droite) reste
+lisible dans un signal après débruitage, on applique une chaîne de classification
+standard en EEG : filtrage passe-bande dans la bande sensori-motrice (7--30~Hz),
+extraction d'une courte fenêtre temporelle après le stimulus, puis un filtrage
+spatial (CSP) qui recherche les directions de l'espace séparant le mieux les
+deux classes. La variance du signal filtré sert ensuite de caractéristique à un
+classifieur linéaire (LDA).
+
+La précision rapportée est la proportion d'essais correctement classés,
+\[
+  \text{Précision} = \frac{\text{essais bien classés}}{\text{essais totaux}}\,,
+\]
+moyennée sur plusieurs tirages aléatoires indépendants d'entraînement/test
+(80\,\%/20\,\%) pour lisser la variabilité d'un tirage à l'autre.
+
+\subsection{MSE ICA vs ICLabel}
+Pour comparer deux méthodes de débruitage entre elles, on calcule l'erreur
+quadratique moyenne (MSE) entre les signaux nettoyés correspondants, essai par
+essai :
+\[
+  \text{MSE} = \frac{1}{N}\sum_{i=1}^{N} \left(x_i - y_i\right)^2 ,
+\]
+où $x_i$ et $y_i$ sont les échantillons (tous canaux et instants confondus) des
+deux signaux nettoyés et $N$ leur nombre total. Seuls les essais communs aux
+deux signaux (gauche/droite, repos exclu) sont comparés.
+
+\subsection{Évolution du MSE pendant l'entraînement (LOSO)}
+Le modèle de débruitage est évalué en \emph{leave-one-subject-out} : pour
+chaque sujet, un modèle neuf est entraîné uniquement sur les autres sujets, puis
+évalué (même MSE que ci-dessus) sur le sujet exclu, jamais vu pendant
+l'entraînement. L'opération est répétée pour chaque sujet.
+
+Pendant l'entraînement, on suit deux courbes : le MSE sur les données
+d'entraînement et le MSE sur le sujet exclu, après chaque passage complet sur
+les données (epoch). Un écart croissant entre les deux signale un
+sur-apprentissage. Le détail à l'intérieur d'une même epoch, lissé sur une
+courte fenêtre glissante, montre quant à lui la vitesse de convergence.
+
+% ####################################################################
+% #                        RAPPORT PAR SUJET                         #
+% ####################################################################
+\clearpage
+\section{Sujets}
+
+\subjectreport{S001}
+\subjectreport{S002}
+\subjectreport{S003}
+\subjectreport{S004}
+\subjectreport{S005}
+\subjectreport{S006}
+\subjectreport{S007}
+\subjectreport{S008}
+\subjectreport{S009}
+\subjectreport{S010}
+\subjectreport{S011}
+\subjectreport{S012}
+\subjectreport{S013}
+\subjectreport{S014}
+\subjectreport{S015}
+\subjectreport{S016}
+\subjectreport{S017}
+\subjectreport{S018}
+\subjectreport{S019}
+\subjectreport{S020}
+
+\end{document}

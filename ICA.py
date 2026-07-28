@@ -6,7 +6,7 @@ from mne.preprocessing import ICA, read_ica
 #Chemins des fichiers
 Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
 Fitted_ICA = pl.Path(r"C:\Users\aymen\Desktop\ART\Fitted_ICA")
-Nettoye_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé_Total")
+Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 
 #Ligne de commande pour récupérer le numéro du sujet
 parser = ap.ArgumentParser(description="ICA")
@@ -36,7 +36,7 @@ ica.plot_sources(epochs, block=True)
 print("Composantes retirées : ", ica.exclude)
 
 #Application de l'ICA et sauvegarde des epochs nettoyés
-out = Nettoye_Total / sujet_id / (sujet_id + "-ICA.fif")
+out = Nettoye / sujet_id / "ICA.fif"
 out.parent.mkdir(parents=True, exist_ok=True)
 ica.apply(epochs)
 epochs.save(out, overwrite=True)

@@ -10,7 +10,8 @@ from Model.GCTNet import Generator
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
+#Toujours Prétraité_Total (3 classes, repos inclus) : comparable à ICA/ICLabel
+Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 Model_Dir = pl.Path(r"C:\Users\aymen\Desktop\ART\Model")
 
@@ -21,11 +22,14 @@ WIN = 512   # fenêtre des modèles mono-canal (EEGdenoiseNet)
 #Modèles de débruitage disponibles (on nettoie toujours EEGBCI)
 #  multi  : réseau 30->30 canaux, appliqué via Utils.clean_epoch
 #  single : réseau mono-canal DuoCL/GCTNet, appliqué canal par canal
+#  ART_ICLABEL : ART entraîné en LOSO contre ICLabel (un checkpoint par sujet exclu
+#  et par epoch, cf. --epoch) ; sortie dans ART.fif comme ART
 MODELES = {
     "ICUNet":      {"kind": "multi",  "mode": "ICUNet"},
     "ICUNet++":    {"kind": "multi",  "mode": "ICUNet++"},
     "ICUNet_attn": {"kind": "multi",  "mode": "ICUNet_attn"},
     "ART":         {"kind": "multi",  "mode": "ART"},
+    "ART_ICLABEL": {"kind": "multi",  "mode": "ART_ICLABEL", "sortie": "ART"},
     "DuoCL":       {"kind": "single", "arch": "DuoCL",  "dossier": "DuoCL"},
     "GCTNet":      {"kind": "single", "arch": "GCTNet", "dossier": "GCTNet"},
 }
@@ -34,9 +38,15 @@ MODELES = {
 parser = ap.ArgumentParser(description="Débruitage EEGBCI")
 parser.add_argument("Modele", choices=list(MODELES), help="modèle de débruitage")
 parser.add_argument("Sujets", nargs="?", default="1-109", help="ex. 1-109 ou 1,2,5 (défaut : 1-109)")
+parser.add_argument("Epoch", type=int, nargs="?", default=None,
+                    help="numéro d'epoch du checkpoint LOSO (requis pour ART_ICLABEL, ex. 40)")
 parser.add_argument("--force", action="store_true", help="recalcule même si le cache existe déjà")
 args = parser.parse_args()
 entry = MODELES[args.Modele]
+
+if args.Modele == "ART_ICLABEL" and args.Epoch is None:
+    raise SystemExit("ERREUR : ART_ICLABEL nécessite un numéro d'epoch, ex. "
+                     "python Clean_Model.py ART_ICLABEL 1 40")
 
 #"1-109" ou "1,2,5" -> liste de sujets
 if "-" in args.Sujets:
@@ -94,11 +104,11 @@ model_obj = charge_modele_mono(entry) if entry["kind"] == "single" else None
 n_ok = n_skip = n_absent = 0
 for s in sujets:
     sujet_id = "S" + str(s).zfill(3)
-    out = Nettoye / sujet_id / (args.Modele + ".fif")
+    out = Nettoye / sujet_id / (entry.get("sortie", args.Modele) + ".fif")
     if out.exists() and not args.force:
         n_skip += 1
         continue
-    fif_initial = Pretraite / (sujet_id + "-epo.fif")
+    fif_initial = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
     if not fif_initial.exists():
         n_absent += 1
         continue
@@ -108,7 +118,7 @@ for s in sujets:
     data_clean = np.empty_like(data)
     for i, epoch in enumerate(data):
         if entry["kind"] == "multi":
-            data_clean[i] = Utils.clean_epoch(epoch, entry["mode"])
+            data_clean[i] = Utils.clean_epoch(epoch, entry["mode"], sujet_id, args.Epoch)
         else:
             data_clean[i] = debruite_epoch_mono(epoch, model_obj)
 
