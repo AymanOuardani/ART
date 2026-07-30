@@ -65,7 +65,7 @@ def prep(X):
 
 #CSP + LDA (régularisation pour ICA/ICLabel : données rang-déficientes après retrait de composantes)
 reg = "ledoit_wolf" if args.Method in ("ICLABEL", "ICA") else None
-clf = Pipeline([("CSP", CSP(n_components=4, reg=reg, log=True, norm_trace=False)),
+clf = Pipeline([("CSP", CSP(n_components=6, reg=reg, log=True, norm_trace=False)),
                 ("LDA", LinearDiscriminantAnalysis())])
 cv = ShuffleSplit(N_iter, test_size=0.2, random_state=42)
 

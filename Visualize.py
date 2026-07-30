@@ -10,6 +10,7 @@ Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif")
 Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
 Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
+ART_Epochs = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\ART")
 
 #Nom du fichier débruité selon le modèle (dans Nettoyé/SXXX/)
 fichiers_apres = {"ART": "ART.fif",
@@ -26,12 +27,23 @@ def couleurs(epochs):
     return {nom: c for nom, c in couleurs_evenements.items() if nom in epochs.event_id}
 
 #Ligne de commande : quoi visualiser + numéro du sujet
+signaux = ["brut", "pretraite", *fichiers_apres]
 parser = ap.ArgumentParser(description="Visualisation d'un sujet")
-parser.add_argument("Signal", choices=["brut", "pretraite", *fichiers_apres],
-                    help="quoi visualiser")
+parser.add_argument("Signal", help="quoi visualiser (insensible à la casse) : " + ", ".join(signaux))
 parser.add_argument("Sujet", type=int, help="Numéro du sujet (1-109)")
+parser.add_argument("Epoch", type=int, nargs="?", default=None,
+                    help="numéro d'epoch (ART uniquement, ex. 40) -> Output/ART/SXXX/ART_epochN.fif")
 args = parser.parse_args()
 sujet_id = "S" + str(args.Sujet).zfill(3)
+
+#Résolution insensible à la casse (ex. "art" -> "ART")
+correspondance = {nom.lower(): nom for nom in signaux}
+if args.Signal.lower() not in correspondance:
+    raise SystemExit(f"ERREUR : signal inconnu '{args.Signal}'. Choix possibles : {', '.join(signaux)}")
+args.Signal = correspondance[args.Signal.lower()]
+
+if args.Epoch is not None and args.Signal != "ART":
+    raise SystemExit("ERREUR : l'argument Epoch n'est utilisable qu'avec le signal ART.")
 
 mne.viz.set_browser_backend("matplotlib")
 
@@ -50,15 +62,18 @@ elif args.Signal == "pretraite":
                 event_color=couleurs(epochs), block=True)
 
 else:
-    #avant (prétraité) vs après (débruité) en 2 fenêtres séparées
-    if args.Signal in ("ICA", "ICLABEL"):
-        fichier_avant = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
+    #avant (prétraité_total) vs après (débruité) en 2 fenêtres séparées
+    #tous les modèles nettoyés viennent de Prétraité_Total (3 classes, cf. Clean_Model.py)
+    fichier_avant = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
+    if args.Epoch is not None:
+        fichier_apres = ART_Epochs / sujet_id / f"ART_epoch{args.Epoch}.fif"
+        titre_apres = f"APRÈS ART (epoch {args.Epoch})"
     else:
-        fichier_avant = Pretraite / (sujet_id + "-epo.fif")
-    fichier_apres = Nettoye / sujet_id / fichiers_apres[args.Signal]
+        fichier_apres = Nettoye / sujet_id / fichiers_apres[args.Signal]
+        titre_apres = "APRÈS " + args.Signal
     avant = mne.read_epochs(fichier_avant, preload=True)
     apres = mne.read_epochs(fichier_apres, preload=True)
     avant.plot(title="Sujet " + sujet_id + " - AVANT " + args.Signal, events=True, event_id=True,
                event_color=couleurs(avant), block=False)
-    apres.plot(title="Sujet " + sujet_id + " - APRÈS " + args.Signal, events=True, event_id=True,
+    apres.plot(title="Sujet " + sujet_id + " - " + titre_apres, events=True, event_id=True,
                event_color=couleurs(apres), block=True)

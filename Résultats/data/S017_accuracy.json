@@ -1,0 +1,9 @@
+{
+  "brut": "Brut & 0.40 $\\pm$ 0.18 \\\\",
+  "ICUNet": "ICUNet & 0.37 $\\pm$ 0.20 \\\\",
+  "ICUNet++": "ICUNet++ & 0.41 $\\pm$ 0.07 \\\\",
+  "ICUNet_attn": "ICUNet\\_attn & 0.54 $\\pm$ 0.17 \\\\",
+  "DuoCL": "DuoCL & 0.52 $\\pm$ 0.15 \\\\",
+  "GCTNet": "GCTNet & 0.36 $\\pm$ 0.16 \\\\",
+  "ICLABEL": "ICLabel & 0.34 $\\pm$ 0.16 \\\\"
+}
