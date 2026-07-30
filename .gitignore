@@ -18,6 +18,7 @@ Fitted_ICA/
 *.crdownload
 *.part
 *.tmp
+.~lock.*#
 
 # --- Python ---
 __pycache__/

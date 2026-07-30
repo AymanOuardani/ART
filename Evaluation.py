@@ -12,9 +12,15 @@ import Utils
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
+Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
 Rapport_Tex = pl.Path(r"C:\Users\aymen\Desktop\ART\Résultats\Rapport_ART.tex")
+
+#Les deux jeux de runs d'imagerie motrice (cf. Pretraitement.py) : dossiers, noms des deux
+#classes à classer, et macro du tableau d'accuracy dans le rapport
+JEUX = {
+    "4812":  {"suffixe": "",    "classes": ("gauche", "droite"), "macro": "accuracyrows"},
+    "61014": {"suffixe": "_FH", "classes": ("poings", "pieds"),  "macro": "accuracyrowsFH"},
+}
 
 #Libellé de chaque signal dans le tableau du rapport (Résultats/Rapport_ART.pdf)
 labels_rapport = {"brut": "Brut",
@@ -44,11 +50,18 @@ fmin, fmax = 7, 30
 crop = slice(int(round(2.95 * sfreq)), int(round(3.95 * sfreq)))   # fenêtre [1,2]s (+ retard FIR ~1.95s)
 N_iter = 10
 
-#Ligne de commande : quel signal évaluer (+ sujet optionnel, sinon tous : 1-109)
+#Ligne de commande : jeu de runs, quel signal évaluer (+ sujet optionnel, sinon tous : 1-109)
 parser = ap.ArgumentParser(description="Évaluation CSP + LDA")
+parser.add_argument("Runs", choices=list(JEUX),
+                    help="4812 : main gauche / main droite | 61014 : les deux poings / les deux pieds")
 parser.add_argument("Method", help="signal à évaluer (insensible à la casse) : " + ", ".join(fichiers))
 parser.add_argument("Sujet", type=int, nargs="?", default=None, help="numéro du sujet (défaut : tous, 1-109)")
 args = parser.parse_args()
+
+jeu = JEUX[args.Runs]
+Pretraite = Output / ("Prétraité" + jeu["suffixe"])
+Nettoye = Output / ("Nettoyé" + jeu["suffixe"])
+classe1, classe2 = jeu["classes"]
 
 #Résolution insensible à la casse (ex. "duocl" -> "DuoCL")
 correspondance = {nom.lower(): nom for nom in fichiers}
@@ -65,7 +78,7 @@ def prep(X):
 
 #CSP + LDA (régularisation pour ICA/ICLabel : données rang-déficientes après retrait de composantes)
 reg = "ledoit_wolf" if args.Method in ("ICLABEL", "ICA") else None
-clf = Pipeline([("CSP", CSP(n_components=6, reg=reg, log=True, norm_trace=False)),
+clf = Pipeline([("CSP", CSP(n_components=4, reg=reg, log=True, norm_trace=False)),
                 ("LDA", LinearDiscriminantAnalysis())])
 cv = ShuffleSplit(N_iter, test_size=0.2, random_state=42)
 
@@ -83,7 +96,7 @@ for s in sujets:
         continue
     epochs = mne.read_epochs(fichier, preload=True)
     if args.Method != "brut":
-        epochs = epochs["gauche", "droite"]           # retire le repos (tous générés depuis Prétraité_Total)
+        epochs = epochs[classe1, classe2]             # retire le repos (tous générés depuis Prétraité_Total)
     X = epochs.get_data()
     y = epochs.events[:, 2]                            # 1=gauche, 2=droite
     scores = cross_val_score(clf, prep(X), y, cv=cv)   # N_iter=10 runs (ShuffleSplit)
@@ -98,7 +111,7 @@ if len(moyennes) > 1:
 if args.Sujet and moyennes and Rapport_Tex.exists():
     sujet_id = "S" + str(args.Sujet).zfill(3)
     ligne = f"{labels_rapport[args.Method]} & {moyennes[0]:.2f} $\\pm$ {ecarts[0]:.2f} \\\\"
-    Utils.maj_tableau_tex(Rapport_Tex.parent / "data" / f"{sujet_id}_accuracy.json",
-                          Rapport_Tex.parent / "data" / f"{sujet_id}_accuracy.tex",
-                          args.Method, ligne, macro="accuracyrows", ordre=list(fichiers))
+    Utils.maj_tableau_tex(Rapport_Tex.parent / "data" / f"{sujet_id}_accuracy{jeu['suffixe']}.json",
+                          Rapport_Tex.parent / "data" / f"{sujet_id}_accuracy{jeu['suffixe']}.tex",
+                          args.Method, ligne, macro=jeu["macro"], ordre=list(fichiers))
     Utils.recompile_latex(Rapport_Tex)

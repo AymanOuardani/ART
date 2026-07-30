@@ -26,12 +26,23 @@ part_train = 0.8   # part des 108 autres sujets pour l'entraînement (86 sujets)
 graine = 42        # split train/validation identique d'une exécution à l'autre
 
 
-def rmse_uv(pred, trg, ecart):
-    # Erreur en µV : on redonne au résidu (pred - trg) son échelle d'origine avec l'écart-type
-    # scalaire de l'essai (garde de côté à l'étape 1), puis V -> µV. La moyenne n'intervient pas :
-    # elle s'annule dans la soustraction. Même métrique que le RMSE des tableaux du rapport.
-    diff_uv = (pred - trg) * ecart.view(-1, 1, 1) * 1e6
-    return torch.sqrt(torch.mean(diff_uv ** 2))
+def reconstruit(model, src):
+    # Reconstruction strictement identique à celle de l'inférence (Utils.decode_data) : le
+    # décodeur reçoit le signal BRUITÉ, jamais la cible propre. Si on lui donnait la cible
+    # (teacher forcing), le modèle apprendrait à la recopier — une tâche qu'il ne reverra
+    # jamais au moment de nettoyer, d'où un effondrement des performances en test.
+    batch = tf_data.Batch(src, src, pad=0)
+    out = model.forward(batch.src, batch.src[:, :, 1:], batch.src_mask, batch.trg_mask)
+    return model.generator(out).permute(0, 2, 1)
+
+
+def erreur_uv(pred, trg, ecart):
+    # Résidu en µV : on redonne au résidu son échelle d'origine avec l'écart-type scalaire de
+    # l'essai (gardé de côté à l'étape 1), puis V -> µV. La moyenne n'intervient pas, elle
+    # s'annule dans la soustraction. Même grandeur que le RMSE des tableaux du rapport.
+    # pred fait 1023 points : on le compare aux 1023 premiers points de la cible, comme à
+    # l'inférence où le dernier point est complété séparément.
+    return (pred - trg[:, :, :-1]) * ecart.view(-1, 1, 1) * 1e6
 
 
 #1 - Charger les paires par sujet (bruité = Prétraité_Total, propre = Nettoyé/ICLABEL.fif)
@@ -96,34 +107,35 @@ for sujet_test in sujets:
 
         #entraînement de l'epoch
         model.train()
-        pertes = []
+        pertes, somme, n = [], 0.0, 0
         for i, (src, trg, ecart) in enumerate(loader):
             src, trg, ecart = src.to(device), trg.to(device), ecart.to(device)
-            batch = tf_data.Batch(src, trg, pad=0)
-            out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
-            pred = model.generator(out).permute(0, 2, 1)
-            perte = rmse_uv(pred, trg[:, :, 1:], ecart)
+            e = erreur_uv(reconstruit(model, src), trg, ecart)
+            perte = torch.sqrt(torch.mean(e ** 2))
             opt.zero_grad()
             perte.backward()
             opt.step()
             pertes.append(perte.item())
+            somme += float((e ** 2).sum())
+            n += e.numel()
             print(f"    batch {i + 1}/{len(loader)} - perte {perte.item():.2f} µV", flush=True)
         pertes_batches.append(pertes)
-        rmse_train_par_epoch.append(sum(pertes) / len(pertes))
+        #RMSE global de l'epoch (somme des carrés puis racine), et non moyenne des RMSE par
+        #batch, qui sous-estimerait et ne serait pas comparable aux tableaux du rapport
+        rmse_train_par_epoch.append(np.sqrt(somme / n))
 
         #validation sur les 22 sujets mis de côté, après cette epoch
         model.eval()
-        pertes_val = []
+        somme, n = 0.0, 0
         with torch.no_grad():
             for j in range(0, len(X_val), batch_size):
                 src = X_val[j:j + batch_size].to(device)
                 trg = Y_val[j:j + batch_size].to(device)
                 ecart = S_val[j:j + batch_size].to(device)
-                batch = tf_data.Batch(src, trg, pad=0)
-                out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
-                pred = model.generator(out).permute(0, 2, 1)
-                pertes_val.append(rmse_uv(pred, trg[:, :, 1:], ecart).item())
-        rmse_val = sum(pertes_val) / len(pertes_val)
+                e = erreur_uv(reconstruit(model, src), trg, ecart)
+                somme += float((e ** 2).sum())
+                n += e.numel()
+        rmse_val = np.sqrt(somme / n)
         rmse_val_par_epoch.append(rmse_val)
 
         #checkpoint de cette epoch : modelsave/SujetXXX/Epoch_NY/checkpoint.pth.tar
@@ -143,17 +155,16 @@ for sujet_test in sujets:
     model.load_state_dict(torch.load(ckpt, map_location=device)["state_dict"])
 
     model.eval()
-    pertes_test = []
+    somme, n = 0.0, 0
     with torch.no_grad():
         for j in range(0, len(X_te), batch_size):
             src = X_te[j:j + batch_size].to(device)
             trg = Y_te[j:j + batch_size].to(device)
             ecart = S_te[j:j + batch_size].to(device)
-            batch = tf_data.Batch(src, trg, pad=0)
-            out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
-            pred = model.generator(out).permute(0, 2, 1)
-            pertes_test.append(rmse_uv(pred, trg[:, :, 1:], ecart).item())
-    rmse_test = sum(pertes_test) / len(pertes_test)
+            e = erreur_uv(reconstruit(model, src), trg, ecart)
+            somme += float((e ** 2).sum())
+            n += e.numel()
+    rmse_test = np.sqrt(somme / n)
     rmses.append(rmse_test)
     print(f"  {sujet_test} : RMSE test {rmse_test:.2f} µV (epoch {meilleure_epoch}) "
           f"- {time.time() - debut:.1f}s", flush=True)

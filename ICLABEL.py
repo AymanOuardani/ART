@@ -1,3 +1,4 @@
+import argparse as ap
 import pathlib as pl
 import mne as mne
 from mne.preprocessing import ICA
@@ -6,8 +7,20 @@ from mne_icalabel import label_components
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
+Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
+
+#Les deux jeux de runs d'imagerie motrice (cf. Pretraitement.py), chacun avec ses dossiers
+JEUX = {"4812": "", "61014": "_FH"}
+
+#Ligne de commande : jeu de runs
+parser = ap.ArgumentParser(description="Nettoyage ICLabel de tous les sujets")
+parser.add_argument("Runs", choices=list(JEUX),
+                    help="4812 : main gauche / main droite | 61014 : les deux poings / les deux pieds")
+args = parser.parse_args()
+
+suffixe = JEUX[args.Runs]
+Pretraite_Total = Output / ("Prétraité" + suffixe + "_Total")
+Nettoye = Output / ("Nettoyé" + suffixe)
 
 #Traitement automatique de TOUS les sujets
 for s in range(1, 110):
