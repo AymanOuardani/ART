@@ -1,7 +1,0 @@
-{
-  "ICUNet_vs_ICLABEL": "ICUNet & 19.74 & 17.67 & \\\\",
-  "ICUNet++_vs_ICLABEL": "ICUNet++ & 19.79 & 15.67 & \\\\",
-  "ICUNet_attn_vs_ICLABEL": "ICUNet\\_attn & 25.21 & 19.55 & \\\\",
-  "DuoCL_vs_ICLABEL": "DuoCL & 25.73 & 17.79 & \\\\",
-  "GCTNet_vs_ICLABEL": "GCTNet & 25.04 & 16.05 & \\\\"
-}

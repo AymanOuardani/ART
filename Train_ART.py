@@ -10,10 +10,14 @@ import Utils
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
+#Cible = ICLABEL_Amélioré.fif (ICA ICLabel sur le signal continu à 64 canaux, cf.
+#ICLABEL_Brut.py) et non ICLABEL.fif : dossiers de sortie distincts pour ne pas écraser
+#l'entraînement précédent, dont les résultats sont déjà dans le rapport.
 Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")   # entrée bruitée
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")                   # cible propre (ICLABEL.fif)
-Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL\modelsave")
-Fichier_Excel = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL\resultats_LOSO.xlsx")
+Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")                   # cible propre
+Cible = "ICLABEL_Amélioré.fif"
+Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL_Amélioré\modelsave")
+Fichier_Excel = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL_Amélioré\resultats_LOSO.xlsx")
 Sortie.mkdir(parents=True, exist_ok=True)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -45,12 +49,12 @@ def erreur_uv(pred, trg, ecart):
     return (pred - trg[:, :, :-1]) * ecart.view(-1, 1, 1) * 1e6
 
 
-#1 - Charger les paires par sujet (bruité = Prétraité_Total, propre = Nettoyé/ICLABEL.fif)
+#1 - Charger les paires par sujet (bruité = Prétraité_Total, propre = Nettoyé/<Cible>)
 sujets = {}
 for s in range(1, 110):
     sujet_id = "S" + str(s).zfill(3)
     f_bruite = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
-    f_propre = Nettoye / sujet_id / "ICLABEL.fif"
+    f_propre = Nettoye / sujet_id / Cible
     if not (f_bruite.exists() and f_propre.exists()):
         continue
     X = mne.read_epochs(f_bruite, preload=True).get_data().astype(np.float32)
@@ -70,8 +74,11 @@ for s in range(1, 110):
 #d'entraînement et 22 sujets de validation (aucun sujet dans les deux, donc la validation mesure
 #la même chose que le test : la généralisation à un sujet jamais vu). Le sujet exclu ne sert qu'au
 #test final, avec le checkpoint de la meilleure epoch de validation.
+#On commence par le sujet 4, puis tous les autres dans l'ordre
+ordre = [s for s in ("S004",) if s in sujets] + [s for s in sujets if s != "S004"]
+
 rmses = []
-for sujet_test in sujets:
+for sujet_test in ordre:
     debut = time.time()
 
     #split au niveau des sujets (et non des essais, sinon un même sujet serait des deux côtés)

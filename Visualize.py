@@ -7,6 +7,7 @@ mne.set_log_level("ERROR")
 
 #Chemins des fichiers
 Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif")
+Brut_fif_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif_ICLABEL")
 Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
 Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
@@ -48,12 +49,26 @@ if args.Epoch is not None and args.Signal != "ART":
 mne.viz.set_browser_backend("matplotlib")
 
 if args.Signal == "brut":
-    #signal continu brut (une fenêtre), évènements T0/T1/T2 nommés et colorés
+    #signal continu brut, plus sa version nettoyée par ICLabel si elle existe : 2 fenêtres
+    #(évènements T0/T1/T2 nommés et colorés dans les deux)
     raw = mne.io.read_raw_fif(Brut_fif / (sujet_id + "-raw.fif"), preload=True)
     events, eid = mne.events_from_annotations(raw)
     event_id = {"repos": eid["T0"], "gauche": eid["T1"], "droite": eid["T2"]}
+
+    fichier_iclabel = Brut_fif_ICLABEL / (sujet_id + "-raw.fif")
+    if not fichier_iclabel.exists():
+        print("Pas de version ICLabel pour", sujet_id, ":", fichier_iclabel)
     raw.plot(title="Sujet " + sujet_id + " - BRUT", events=events, event_id=event_id,
-             event_color=couleurs_evenements, annotation_regex="(?!)", block=True)
+             event_color=couleurs_evenements, annotation_regex="(?!)",
+             block=not fichier_iclabel.exists())
+
+    if fichier_iclabel.exists():
+        raw_iclabel = mne.io.read_raw_fif(fichier_iclabel, preload=True)
+        events, eid = mne.events_from_annotations(raw_iclabel)
+        event_id = {"repos": eid["T0"], "gauche": eid["T1"], "droite": eid["T2"]}
+        raw_iclabel.plot(title="Sujet " + sujet_id + " - BRUT NETTOYÉ ICLABEL",
+                         events=events, event_id=event_id,
+                         event_color=couleurs_evenements, annotation_regex="(?!)", block=True)
 
 elif args.Signal == "pretraite":
     #epochs prétraités (une fenêtre)
