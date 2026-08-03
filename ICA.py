@@ -4,7 +4,7 @@ import mne as mne
 from mne.preprocessing import ICA, read_ica
 
 #Chemins des fichiers
-Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
+Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
 Fitted_ICA = pl.Path(r"C:\Users\aymen\Desktop\ART\Fitted_ICA")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 
@@ -15,7 +15,7 @@ args = parser.parse_args()
 
 #Lecture des epochs
 sujet_id = "S" + str(args.Sujet).zfill(3)
-fif_initial = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
+fif_initial = Pretraite / (sujet_id + "_Pre.fif")
 epochs = mne.read_epochs(fif_initial, preload=True)
 
 #Lecture/Fitting de l'ICA
@@ -25,7 +25,7 @@ if ica_file.exists():
     print(f"ICA existe déjà pour Sujet {args.Sujet}. Lecture réussie.")
 else:
     print(f"ICA n'existe pas encore pour Sujet {args.Sujet}. Fitting en cours...")
-    ica = ICA(n_components=30, method="fastica", fit_params=dict(extended=True),
+    ica = ICA(n_components=30, method="infomax", fit_params=dict(extended=True),
               random_state=42, max_iter="auto")
     epochs_filtres = epochs.copy().filter(l_freq=1.0, h_freq=None)
     ica.fit(epochs_filtres)

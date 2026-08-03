@@ -10,12 +10,11 @@ from Model.GCTNet import Generator
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-#Toujours Prétraité_Total (3 classes, repos inclus) : comparable à ICA/ICLabel
+#Toujours Prétraité (3 classes, repos inclus) : comparable à ICA/ICLabel
 Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
 Model_Dir = pl.Path(r"C:\Users\aymen\Desktop\ART\Model")
-
-#Les deux jeux de runs d'imagerie motrice (cf. Pretraitement.py), chacun avec ses dossiers
-JEUX = {"4812": "", "61014": "_FH"}
+Pretraite = Output / "Prétraité"
+Nettoye = Output / "Nettoyé"
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -38,8 +37,6 @@ MODELES = {
 
 #Ligne de commande
 parser = ap.ArgumentParser(description="Débruitage EEGBCI")
-parser.add_argument("Runs", choices=list(JEUX),
-                    help="4812 : main gauche / main droite | 61014 : les deux poings / les deux pieds")
 parser.add_argument("Modele", choices=list(MODELES), help="modèle de débruitage")
 parser.add_argument("Sujets", nargs="?", default="1-109", help="ex. 1-109 ou 1,2,5 (défaut : 1-109)")
 parser.add_argument("Epoch", type=int, nargs="?", default=None,
@@ -48,13 +45,9 @@ parser.add_argument("--force", action="store_true", help="recalcule même si le 
 args = parser.parse_args()
 entry = MODELES[args.Modele]
 
-suffixe = JEUX[args.Runs]
-Pretraite_Total = Output / ("Prétraité" + suffixe + "_Total")
-Nettoye = Output / ("Nettoyé" + suffixe)
-
 if args.Modele == "ART_ICLABEL" and args.Epoch is None:
     raise SystemExit("ERREUR : ART_ICLABEL nécessite un numéro d'epoch, ex. "
-                     "python Clean_Model.py 4812 ART_ICLABEL 1 40")
+                     "python Clean_Model.py ART_ICLABEL 1 40")
 
 #"1-109" ou "1,2,5" -> liste de sujets
 if "-" in args.Sujets:
@@ -116,7 +109,7 @@ for s in sujets:
     if out.exists() and not args.force:
         n_skip += 1
         continue
-    fif_initial = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
+    fif_initial = Pretraite / (sujet_id + "_Pre.fif")
     if not fif_initial.exists():
         n_absent += 1
         continue

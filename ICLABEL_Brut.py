@@ -7,8 +7,8 @@ from mne_icalabel import label_components
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers : on nettoie les signaux continus, avant tout prétraitement
-Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif")
-Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif_ICLABEL")
+Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI")
+Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_ICLABEL")
 Sortie.mkdir(parents=True, exist_ok=True)
 
 #Traitement automatique de TOUS les sujets

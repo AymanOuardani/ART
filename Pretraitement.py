@@ -8,43 +8,41 @@ from mne.datasets import eegbci
 
 mne.set_log_level("ERROR")
 
-#Chemins des fichiers
-Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif")          # runs 4/8/12
-Brut_fif_FH = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_FH_fif")    # runs 6/10/14
+#Chemins des fichiers : imagerie main gauche / main droite (runs 4/8/12) uniquement
+Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI")
+Brut_fif_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_ICLABEL")
 Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
+Pretraite = Output / "Prétraité"
+Nettoye = Output / "Nettoyé"
 
 epoch_len = 1024           # 4 s à 256 Hz
-
-#Les deux jeux de runs d'imagerie motrice de la base EEGBCI. Les annotations s'appellent
-#T1/T2 dans les deux cas, mais ne désignent pas la même tâche : d'où des classes et des
-#dossiers de sortie distincts, pour ne pas mélanger les deux protocoles.
-JEUX = {
-    "4812":  {"source": Brut_fif,    "suffixe": "",    "classes": ("gauche", "droite")},
-    "61014": {"source": Brut_fif_FH, "suffixe": "_FH", "classes": ("poings", "pieds")},
-}
+classe1, classe2 = "gauche", "droite"
 
 #30 canaux du template ART, dans l'ordre attendu par le modèle
 Art_Template = ["Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "FT7", "FC3", "FCz",
                 "FC4", "FT8", "T7", "C3", "Cz", "C4", "T8", "TP7", "CP3", "CPz",
                 "CP4", "TP8", "P7", "P3", "Pz", "P4", "P8", "O1", "Oz", "O2"]
 
-#Ligne de commande : jeu de runs, numéro du sujet (+ option --total pour garder le repos)
+#Ligne de commande : numéro du sujet, et quelle version du signal continu prétraiter
 parser = ap.ArgumentParser(description="Prétraitement EEGBCI")
-parser.add_argument("Runs", choices=list(JEUX),
-                    help="4812 : main gauche / main droite | 61014 : les deux poings / les deux pieds")
 parser.add_argument("Sujet", type=int, help="Numéro du sujet (1-109)")
-parser.add_argument("--total", action="store_true",
-                    help="garde aussi le repos T0 (3 classes) -> Prétraité[_FH]_Total")
+parser.add_argument("--iclabel", action="store_true",
+                    help="prétraite le signal nettoyé par ICLabel (cf. ICLABEL_Brut.py) au lieu du "
+                         "brut -> Output/Nettoyé/SXXX/ICLABEL_Amélioré.fif")
 args = parser.parse_args()
 sujet_id = "S" + str(args.Sujet).zfill(3)
 
-jeu = JEUX[args.Runs]
-classe1, classe2 = jeu["classes"]
-Pretraite = Output / ("Prétraité" + jeu["suffixe"])
-Pretraite_Total = Output / ("Prétraité" + jeu["suffixe"] + "_Total")
+#Le brut et sa version nettoyée par ICLabel passent par ce même script, donc par exactement le
+#même réordonnancement de canaux, le même rééchantillonnage, le même filtre et le même découpage.
+#C'est indispensable : les deux signaux sont ensuite comparés échantillon par échantillon
+#(RMSE, SNR) et servent de paire d'entraînement à ART.
+source = (Brut_fif_ICLABEL if args.iclabel else Brut_fif) / (sujet_id + "-raw.fif")
+if not source.exists():
+    raise SystemExit(f"ERREUR : fichier introuvable : {source}"
+                     + ("\n  (lance d'abord ICLABEL_Brut.py)" if args.iclabel else ""))
 
 #Lecture du fichier brut regroupé et standardisation des noms de canaux
-raw = mne.io.read_raw_fif(jeu["source"] / (sujet_id + "-raw.fif"), preload=True)
+raw = mne.io.read_raw_fif(source, preload=True)
 eegbci.standardize(raw)
 
 #Sélection et réordonnancement des 30 canaux ART (par nom)
@@ -60,17 +58,12 @@ data = resample_poly(data, frac.numerator, frac.denominator, axis=1)
 coeff = firwin(1000, [1, 50], pass_zero=False, fs=256.0)
 data = lfilter(coeff, 1.0, data, axis=1)
 
-#Choix des classes et de la sortie selon --total
+#Tout le signal : les deux classes de mouvement et le repos (T0), jamais découpé autrement
 events, eid = mne.events_from_annotations(raw)
 scale = 256 / raw.info["sfreq"]                                # indices 160 Hz -> 256 Hz
-if args.total:
-    labels = {eid["T0"]: 3, eid["T1"]: 1, eid["T2"]: 2}       # repos=3, classe1=1, classe2=2
-    event_id = {classe1: 1, classe2: 2, "repos": 3}
-    out = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
-else:
-    labels = {eid["T1"]: 1, eid["T2"]: 2}                     # classe1=1, classe2=2
-    event_id = {classe1: 1, classe2: 2}
-    out = Pretraite / (sujet_id + "-epo.fif")
+labels = {eid["T0"]: 3, eid["T1"]: 1, eid["T2"]: 2}           # repos=3, classe1=1, classe2=2
+event_id = {classe1: 1, classe2: 2, "repos": 3}
+out = (Nettoye / sujet_id / "ICLABEL_Amélioré.fif") if args.iclabel else (Pretraite / (sujet_id + "_Pre.fif"))
 
 #Découpage en blocs de 4 s autour des événements retenus
 X, y = [], []
@@ -94,4 +87,4 @@ epochs = mne.EpochsArray(X * 1e-6, info, ev, tmin=0, event_id=event_id)
 #Sauvegarde
 out.parent.mkdir(parents=True, exist_ok=True)
 epochs.save(out, overwrite=True)
-print("Prétraitement sauvegardé pour Sujet ", args.Sujet, "(runs", args.Runs + ") :", len(y), "blocs ->", out.name)
+print("Prétraitement sauvegardé pour Sujet ", args.Sujet, ":", len(y), "blocs ->", out)

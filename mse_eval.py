@@ -19,6 +19,8 @@ labels_rapport = {"ART": "ART", "ICUNet": "ICUNet", "ICUNet++": "ICUNet++", "ICU
 parser = ap.ArgumentParser(description="MSE entre un signal nettoyé et le signal nettoyé par ICLabel")
 parser.add_argument("Method", help="signal à comparer à ICLabel (insensible à la casse) : " + ", ".join(labels_rapport))
 parser.add_argument("Sujet", type=int, help="Numéro du sujet (1-109)")
+parser.add_argument("--sans-latex", action="store_true",
+                    help="met à jour les données du rapport sans lancer pdflatex (traitement en série)")
 args = parser.parse_args()
 sujet_id = "S" + str(args.Sujet).zfill(3)
 
@@ -28,14 +30,16 @@ if args.Method.lower() not in correspondance:
     raise SystemExit(f"ERREUR : signal inconnu '{args.Method}'. Choix possibles : {', '.join(labels_rapport)}")
 args.Method = correspondance[args.Method.lower()]
 
+#ICLabel = l'ICA ICLabel appliquée au signal continu à 64 canaux (ICLABEL_Brut.py), qui est aussi
+#la cible d'entraînement d'ART : c'est la seule référence ICLabel du rapport.
 f_methode = Nettoye / sujet_id / (args.Method + ".fif")
-f_iclabel = Nettoye / sujet_id / "ICLABEL.fif"
+f_iclabel = Nettoye / sujet_id / "ICLABEL_Amélioré.fif"
 if not (f_methode.exists() and f_iclabel.exists()):
     raise SystemExit(f"ERREUR : fichier(s) manquant(s) pour {sujet_id}\n"
                      f"  {f_methode} (existe : {f_methode.exists()})\n"
                      f"  {f_iclabel} (existe : {f_iclabel.exists()})")
 
-#Les deux viennent de Prétraité_Total (3 classes) : tout le signal, comme pendant l'entraînement
+#Les deux viennent de Prétraité (3 classes) : tout le signal, comme pendant l'entraînement
 #(Train_ART.py n'exclut pas le repos), pas seulement gauche/droite
 methode = mne.read_epochs(f_methode, preload=True)
 iclabel = mne.read_epochs(f_iclabel, preload=True)
@@ -65,4 +69,5 @@ if Rapport_Tex.exists():
     n = len(lignes)
     lignes[0] = lignes[0].rsplit("&", 1)[0] + f"& \\multirow{{{n}}}{{*}}{{{ref_rms:.1f}}} \\\\"
     tex_path.write_text("\\def\\mserow{\n" + "\n".join(lignes) + "}\n", encoding="utf-8", newline="\n")
-    Utils.recompile_latex(Rapport_Tex)
+    if not args.sans_latex:
+        Utils.recompile_latex(Rapport_Tex)

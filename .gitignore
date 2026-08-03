@@ -13,6 +13,11 @@
 Databases/
 Output/
 Fitted_ICA/
+Résultats/
+
+# --- Resultats d'entrainement (classeurs volumineux, regeneres par les scripts) ---
+*.xlsx
+*.ods
 
 # --- Telechargements incomplets / fichiers temporaires ---
 *.crdownload
@@ -43,5 +48,3 @@ build.log
 .claude/
 .vscode/
 .DS_Store
-
-*.ods

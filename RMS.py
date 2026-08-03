@@ -8,8 +8,11 @@ mne.set_log_level("ERROR")
 #Chemins des fichiers
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 
-#Modèles à comparer (fichier SXXX/{modele}.fif dans Nettoyé/)
-modeles = ["ICLABEL", "ART", "ICUNet", "ICUNet++", "ICUNet_attn", "DuoCL", "GCTNet"]
+#Modèles à comparer : libellé -> fichier SXXX/....fif dans Nettoyé/
+#ICLabel = l'ICA ICLabel décomposée sur le signal continu à 64 canaux (ICLABEL_Brut.py)
+modeles = {"ICLABEL": "ICLABEL_Amélioré.fif", "ART": "ART.fif", "ICUNet": "ICUNet.fif",
+           "ICUNet++": "ICUNet++.fif", "ICUNet_attn": "ICUNet_attn.fif",
+           "DuoCL": "DuoCL.fif", "GCTNet": "GCTNet.fif"}
 
 #Ligne de commande : numéro du sujet
 parser = ap.ArgumentParser(description="RMS (µV) du signal nettoyé pour un sujet, par modèle")
@@ -18,8 +21,8 @@ args = parser.parse_args()
 sujet_id = "S" + str(args.Sujet).zfill(3)
 
 #Calcul du RMS, modèle par modèle
-for modele in modeles:
-    fichier = Nettoye / sujet_id / (modele + ".fif")
+for modele, nom_fichier in modeles.items():
+    fichier = Nettoye / sujet_id / nom_fichier
     if not fichier.exists():
         print(f"RMS de {modele} = fichier introuvable")
         continue

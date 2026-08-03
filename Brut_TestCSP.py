@@ -32,10 +32,10 @@ t_debut = time.time()
 
 for i in range(1, 110):
     sujet_id = "S" + str(i).zfill(3)
-    f = Pretraite / (sujet_id + "-epo.fif")
+    f = Pretraite / (sujet_id + "_Pre.fif")
     if not f.exists():
         continue
-    epochs = mne.read_epochs(f, preload=True)
+    epochs = mne.read_epochs(f, preload=True)["gauche", "droite"]   # retire le repos T0
     X = epochs.get_data()
     y = epochs.events[:, 2]
     Xp = prep(X)

@@ -6,17 +6,18 @@ import mne as mne
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif")
-Brut_fif_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_fif_ICLABEL")
+Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI")
+Brut_fif_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_ICLABEL")
 Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
-Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 ART_Epochs = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\ART")
 
 #Nom du fichier débruité selon le modèle (dans Nettoyé/SXXX/)
 fichiers_apres = {"ART": "ART.fif",
                   "ICUNet": "ICUNet.fif", "ICUNet++": "ICUNet++.fif", "ICUNet_attn": "ICUNet_attn.fif",
-                  "DuoCL": "DuoCL.fif", "GCTNet": "GCTNet.fif", "ICLABEL": "ICLABEL.fif", "ICA": "ICA.fif"}
+                  "DuoCL": "DuoCL.fif", "GCTNet": "GCTNet.fif",
+                  "ICLABEL": "ICLABEL_Amélioré.fif",   # ICLabel = ICA sur le raw 64 canaux
+                  "ICA": "ICA.fif"}
 
 #Couleurs des évènements (gauche/droite/repos)
 couleurs_evenements = {"gauche": "tab:blue", "droite": "tab:red", "repos": "tab:green"}
@@ -72,14 +73,14 @@ if args.Signal == "brut":
 
 elif args.Signal == "pretraite":
     #epochs prétraités (une fenêtre)
-    epochs = mne.read_epochs(Pretraite / (sujet_id + "-epo.fif"), preload=True)
+    epochs = mne.read_epochs(Pretraite / (sujet_id + "_Pre.fif"), preload=True)
     epochs.plot(title="Sujet " + sujet_id + " - PRÉTRAITÉ", events=True, event_id=True,
                 event_color=couleurs(epochs), block=True)
 
 else:
-    #avant (prétraité_total) vs après (débruité) en 2 fenêtres séparées
-    #tous les modèles nettoyés viennent de Prétraité_Total (3 classes, cf. Clean_Model.py)
-    fichier_avant = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
+    #avant (prétraité) vs après (débruité) en 2 fenêtres séparées
+    #tous les modèles nettoyés viennent de Prétraité (3 classes, cf. Clean_Model.py)
+    fichier_avant = Pretraite / (sujet_id + "_Pre.fif")
     if args.Epoch is not None:
         fichier_apres = ART_Epochs / sujet_id / f"ART_epoch{args.Epoch}.fif"
         titre_apres = f"APRÈS ART (epoch {args.Epoch})"

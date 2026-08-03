@@ -6,15 +6,21 @@ import matplotlib.pyplot as plt
 import Utils
 
 #Chemins des fichiers
-Fichier_Excel = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL\resultats_LOSO.xlsx")
+Model_Dir = pl.Path(r"C:\Users\aymen\Desktop\ART\Model")
+Modele_Defaut = "ART_ICLABEL"                      # dossier des checkpoints LOSO dans Model/
 Rapport_Tex = pl.Path(r"C:\Users\aymen\Desktop\ART\Résultats\Rapport_ART.tex")
 Images_Dir = pl.Path(r"C:\Users\aymen\Desktop\ART\Résultats\Images")
 
 #Ligne de commande pour récupérer le numéro du sujet
 parser = ap.ArgumentParser(description="Évolution de l'erreur (train/validation) par epoch, sujet exclu (LOSO)")
 parser.add_argument("Sujet", type=int, help="Numéro du sujet exclu (1-109)")
+parser.add_argument("--modele", default=Modele_Defaut,
+                    help=f"dossier de l'entraînement dans Model/ (défaut : {Modele_Defaut})")
+parser.add_argument("--sans-latex", action="store_true",
+                    help="écrit la figure sans ouvrir de fenêtre ni lancer pdflatex (traitement en série)")
 args = parser.parse_args()
 sujet_id = "S" + str(args.Sujet).zfill(3)
+Fichier_Excel = Model_Dir / args.modele / "resultats_LOSO.xlsx"
 
 if not Fichier_Excel.exists():
     raise SystemExit(f"ERREUR : fichier introuvable : {Fichier_Excel}\n"
@@ -74,6 +80,9 @@ if Rapport_Tex.exists():
         f"({best_val:.{decimales}f}{' µV' if decimales == 2 else ''}) "
         f"se présente à l'epoch {best_epoch}.}}\n", encoding="utf-8")
 
-    Utils.recompile_latex(Rapport_Tex)
+    if not args.sans_latex:
+        Utils.recompile_latex(Rapport_Tex)
 
-plt.show()
+#En série (--sans-latex), la figure est déjà écrite : ouvrir une fenêtre bloquerait le script
+if not args.sans_latex:
+    plt.show()

@@ -13,7 +13,7 @@ mne.set_log_level("ERROR")
 #Cible = ICLABEL_Amélioré.fif (ICA ICLabel sur le signal continu à 64 canaux, cf.
 #ICLABEL_Brut.py) et non ICLABEL.fif : dossiers de sortie distincts pour ne pas écraser
 #l'entraînement précédent, dont les résultats sont déjà dans le rapport.
-Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")   # entrée bruitée
+Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")   # entrée bruitée
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")                   # cible propre
 Cible = "ICLABEL_Amélioré.fif"
 Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL_Amélioré\modelsave")
@@ -49,11 +49,11 @@ def erreur_uv(pred, trg, ecart):
     return (pred - trg[:, :, :-1]) * ecart.view(-1, 1, 1) * 1e6
 
 
-#1 - Charger les paires par sujet (bruité = Prétraité_Total, propre = Nettoyé/<Cible>)
+#1 - Charger les paires par sujet (bruité = Prétraité, propre = Nettoyé/<Cible>)
 sujets = {}
 for s in range(1, 110):
     sujet_id = "S" + str(s).zfill(3)
-    f_bruite = Pretraite_Total / (sujet_id + "_Pre_Total.fif")
+    f_bruite = Pretraite / (sujet_id + "_Pre.fif")
     f_propre = Nettoye / sujet_id / Cible
     if not (f_bruite.exists() and f_propre.exists()):
         continue

@@ -24,12 +24,13 @@ _CACHE = {}
 
 def get_model(mode, sujet_id=None, epoch_num=None):
     # Construit et charge le modele une seule fois (mise en cache)
-    # ART_ICLABEL : un checkpoint par sujet exclu (LOSO) et par epoch d'entrainement,
-    # dans Model/ART_ICLABEL/modelsave/SXXX/Epoch_NY/checkpoint.pth.tar
+    # ART_ICLABEL* : un checkpoint par sujet exclu (LOSO) et par epoch d'entrainement,
+    # dans Model/<mode>/modelsave/SXXX/Epoch_NY/checkpoint.pth.tar. Le prefixe couvre les
+    # variantes d'entrainement (ART_ICLABEL, ART_ICLABEL_Ameliore, ...) sans toucher au code.
     cle = (mode, sujet_id, epoch_num)
     if cle in _CACHE:
         return _CACHE[cle]
-    if mode == "ART_ICLABEL":
+    if mode.startswith("ART_ICLABEL"):
         ckpt = MODEL_DIR / mode / "modelsave" / sujet_id / f"Epoch_N{epoch_num}" / "checkpoint.pth.tar"
     else:
         ckpt = MODEL_DIR / mode / "modelsave" / "checkpoint.pth.tar"
@@ -44,7 +45,7 @@ def get_model(mode, sujet_id=None, epoch_num=None):
     elif mode == "ICUNet_attn":
         model = UNet_attention.UNetpp3_Transformer(num_classes=30).to(device)
         model.load_state_dict(state, False)
-    elif mode in ("ART", "ART_ICLABEL"):
+    elif mode == "ART" or mode.startswith("ART_ICLABEL"):
         model = tf_model.make_model(30, 30, N=2).to(device)
         model.load_state_dict(state)
     else:
@@ -63,7 +64,7 @@ def decode_data(data, mode, sujet_id=None, epoch_num=None):
             out = model(torch.Tensor(data[np.newaxis]).to(device))
         elif mode in ("ICUNet++", "ICUNet_attn"):
             _, _, out = model(torch.Tensor(data[np.newaxis]).to(device))
-        else:  # ART / ART_ICLABEL
+        else:  # ART / ART_ICLABEL*
             src = torch.FloatTensor(data).to(device).unsqueeze(0)
             batch = tf_data.Batch(src, src, 0)
             out = model.forward(batch.src, batch.src[:, :, 1:], batch.src_mask, batch.trg_mask)

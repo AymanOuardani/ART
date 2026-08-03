@@ -9,7 +9,6 @@ mne.set_log_level("ERROR")
 
 #Chemins des fichiers
 Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
-Pretraite_Total = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité_Total")
 Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 ART_Epochs = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\ART")
 
@@ -21,7 +20,7 @@ fichiers = {"brut": None,
             "ICUNet_attn": "ICUNet_attn.fif",
             "DuoCL": "DuoCL.fif",
             "GCTNet": "GCTNet.fif",
-            "ICLABEL": "ICLABEL.fif",
+            "ICLABEL": "ICLABEL_Amélioré.fif",   # ICLabel = ICA sur le raw 64 canaux
             "ICA": "ICA.fif"}
 
 #Paramètres CSP identiques à Evaluation.py (imagerie main gauche vs main droite, runs 4/8/12)
@@ -58,17 +57,14 @@ def prep(X):
 def lit_epochs(signal, epoch_num):
     # Epochs des deux classes de mouvement (ART avec un numéro d'epoch : checkpoint LOSO)
     if signal == "brut":
-        fichier = Pretraite / (sujet_id + "-epo.fif")
+        fichier = Pretraite / (sujet_id + "_Pre.fif")
     elif epoch_num is not None:
         fichier = ART_Epochs / sujet_id / f"ART_epoch{epoch_num}.fif"
     else:
         fichier = Nettoye / sujet_id / fichiers[signal]
     if not fichier.exists():
         raise SystemExit(f"ERREUR : fichier introuvable : {fichier}")
-    epochs = mne.read_epochs(fichier, preload=True)
-    if signal != "brut":
-        epochs = epochs["gauche", "droite"]             # retire le repos (générés depuis Prétraité_Total)
-    return epochs
+    return mne.read_epochs(fichier, preload=True)["gauche", "droite"]   # retire le repos T0
 
 
 def patterns(epochs, signal):
