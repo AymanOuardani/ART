@@ -1,3 +1,16 @@
+"""
+Mesure ce qui reste de l'intention motrice dans un signal : décodage main gauche vs main
+droite par CSP + LDA, en validation croisée (10 tirages 80/20). C'est le critère qui compte
+pour un débruiteur — enlever du bruit sans effacer l'information utile.
+
+  python Evaluation.py brut 1      un sujet
+  python Evaluation.py ART         les 109 sujets, avec la moyenne finale
+  python Evaluation.py ART 4 1     ART au checkpoint LOSO de l'epoch 1, sujet 4
+
+Toutes les méthodes portent sur exactement les mêmes essais : le repos est retiré juste
+avant la classification, jamais au prétraitement.
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np
@@ -7,28 +20,15 @@ from mne.decoding import CSP
 from sklearn.pipeline import Pipeline
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import ShuffleSplit, cross_val_score
-import Utils
 
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
 Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
-Rapport_Tex = pl.Path(r"C:\Users\aymen\Desktop\ART\Résultats\Rapport_ART.tex")
-
 Pretraite = Output / "Prétraité"
 Nettoye = Output / "Nettoyé"
 ART_Epochs = Output / "ART"     # sorties d'un checkpoint LOSO précis (cf. ART_Epochs.py)
 classe1, classe2 = "gauche", "droite"   # imagerie main gauche / main droite (runs 4/8/12)
-
-#Libellé de chaque signal dans le tableau du rapport (Résultats/Rapport_ART.pdf)
-labels_rapport = {"brut": "Brut",
-                  "ART": "ART",
-                  "ICUNet": "ICUNet",
-                  "ICUNet++": "ICUNet++",
-                  "ICUNet_attn": "ICUNet\\_attn",
-                  "DuoCL": "DuoCL",
-                  "GCTNet": "GCTNet",
-                  "ICLABEL": "ICLabel"}
 
 #Nom de fichier selon le signal. Tous viennent de Prétraité, y compris le brut : le repos T0
 #est retiré plus bas, donc toutes les méthodes portent sur exactement les mêmes essais.
@@ -54,8 +54,6 @@ parser.add_argument("Method", help="signal à évaluer (insensible à la casse) 
 parser.add_argument("Sujet", type=int, nargs="?", default=None, help="numéro du sujet (défaut : tous, 1-109)")
 parser.add_argument("Epoch", type=int, nargs="?", default=None,
                     help="numéro d'epoch (ART uniquement, ex. 1) -> Output/ART/SXXX/ART_epochN.fif")
-parser.add_argument("--sans-latex", action="store_true",
-                    help="met à jour les données du rapport sans lancer pdflatex (traitement en série)")
 args = parser.parse_args()
 
 #Résolution insensible à la casse (ex. "duocl" -> "DuoCL")
@@ -69,13 +67,7 @@ if args.Epoch is not None and (args.Method != "ART" or args.Sujet is None):
                      "ex. python Evaluation.py ART 4 1")
 
 
-def prep(X):
-    X = X - X.mean(axis=1, keepdims=True)              # référence moyenne
-    X = filter_data(X, sfreq, fmin, fmax)              # band-pass 7-30 Hz
-    return X[:, :, crop]                                # fenêtre [1,2]s
-
-
-#CSP + LDA (régularisation pour ICA/ICLabel : données rang-déficientes après retrait de composantes)
+#CSP + LDA (régularisation pour ICLabel : données rang-déficientes après retrait de composantes)
 reg = "ledoit_wolf" if args.Method == "ICLABEL" else None
 clf = Pipeline([("CSP", CSP(n_components=4, reg=reg, log=True, norm_trace=False)),
                 ("LDA", LinearDiscriminantAnalysis())])
@@ -96,24 +88,18 @@ for s in sujets:
         print(f"  {args.Method:6s} {sujet_id} : fichier introuvable ({fichier})")
         continue
     epochs = mne.read_epochs(fichier, preload=True)[classe1, classe2]   # retire le repos T0
-    X = epochs.get_data()
     y = epochs.events[:, 2]                            # 1=gauche, 2=droite
-    scores = cross_val_score(clf, prep(X), y, cv=cv)   # N_iter=10 runs (ShuffleSplit)
+
+    #Prétraitement : référence moyenne, band-pass 7-30 Hz, fenêtre [1,2]s
+    X = epochs.get_data()
+    X = X - X.mean(axis=1, keepdims=True)
+    X = filter_data(X, sfreq, fmin, fmax)
+    X = X[:, :, crop]
+
+    scores = cross_val_score(clf, X, y, cv=cv)         # N_iter=10 runs (ShuffleSplit)
     moyennes.append(scores.mean())
     ecarts.append(scores.std())
     print(f"  {args.Method:6s} {sujet_id} : moyenne {scores.mean():.2f} +/- {scores.std():.2f}")
 
 if len(moyennes) > 1:
     print(f"\nMoyenne finale ({args.Method}) : {np.mean(moyennes):.3f} +/- {np.std(moyennes):.3f}")
-
-#Sujet unique évalué avec succès -> reporte la valeur dans Résultats/Rapport_ART.pdf.
-#Pas avec un numéro d'epoch : la ligne « ART » du rapport est celle du modèle d'origine, et
-#les résultats par epoch sont du ressort d'ART_Epochs.py.
-if args.Sujet and args.Epoch is None and moyennes and Rapport_Tex.exists():
-    sujet_id = "S" + str(args.Sujet).zfill(3)
-    ligne = f"{labels_rapport[args.Method]} & {moyennes[0]:.2f} $\\pm$ {ecarts[0]:.2f} \\\\"
-    Utils.maj_tableau_tex(Rapport_Tex.parent / "data" / f"{sujet_id}_accuracy.json",
-                          Rapport_Tex.parent / "data" / f"{sujet_id}_accuracy.tex",
-                          args.Method, ligne, macro="accuracyrows", ordre=list(fichiers))
-    if not args.sans_latex:
-        Utils.recompile_latex(Rapport_Tex)

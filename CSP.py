@@ -1,3 +1,15 @@
+"""
+Montre ce que le décodeur regarde : les topographies des filtres CSP ajustés sur un signal,
+c'est-à-dire les zones du scalp qui séparent le mieux main gauche et main droite. Un bon
+débruitage doit laisser apparaître les aires sensori-motrices, de part et d'autre du vertex.
+
+  python CSP.py brut 1        signal brut du sujet 1
+  python CSP.py ICLABEL 1
+  python CSP.py ART 4 1       ART au checkpoint LOSO de l'epoch 1
+
+La figure compare trois lignes : le signal demandé, ICLabel (la cible) et ART d'origine.
+"""
+
 import argparse as ap
 import pathlib as pl
 import matplotlib.pyplot as plt
@@ -46,15 +58,14 @@ args.Signal = correspondance[args.Signal.lower()]
 if args.Epoch is not None and args.Signal != "ART":
     raise SystemExit("ERREUR : l'argument Epoch n'est utilisable qu'avec le signal ART.")
 
+#Les trois signaux tracés : celui demandé, ICLabel (la cible) et ART d'origine (non réentraîné)
+a_tracer = [(args.Signal, args.Epoch), ("ICLABEL", None), ("ART", None)]
 
-def prep(X):
-    X = X - X.mean(axis=1, keepdims=True)              # référence moyenne
-    X = filter_data(X, sfreq, fmin, fmax)              # band-pass 7-30 Hz
-    return X[:, :, crop]                                # fenêtre [1,2]s
+#Décomposition CSP de chacun
+noms, patterns, info = [], [], None
+for signal, epoch_num in a_tracer:
 
-
-def lit_epochs(signal, epoch_num):
-    # Epochs des deux classes de mouvement (ART avec un numéro d'epoch : checkpoint LOSO)
+    #Chemin du fichier (ART avec un numéro d'epoch : checkpoint LOSO)
     if signal == "brut":
         fichier = Pretraite / (sujet_id + "_Pre.fif")
     elif epoch_num is not None:
@@ -63,29 +74,33 @@ def lit_epochs(signal, epoch_num):
         fichier = Nettoye / sujet_id / fichiers[signal]
     if not fichier.exists():
         raise SystemExit(f"ERREUR : fichier introuvable : {fichier}")
-    return mne.read_epochs(fichier, preload=True)["gauche", "droite"]   # retire le repos T0
 
+    #Lecture des essais des deux classes de mouvement (le repos T0 est retiré)
+    epochs = mne.read_epochs(fichier, preload=True)["gauche", "droite"]
+    if info is None:
+        info = epochs.info
 
-def patterns(epochs, signal):
-    # Ajustement de la CSP (régularisation pour ICA/ICLabel : données rang-déficientes)
+    #Prétraitement : référence moyenne, band-pass 7-30 Hz, fenêtre [1,2]s
+    X = epochs.get_data()
+    X = X - X.mean(axis=1, keepdims=True)
+    X = filter_data(X, sfreq, fmin, fmax)
+    X = X[:, :, crop]
+
+    #Ajustement de la CSP (régularisation pour ICLabel : données rang-déficientes)
     reg = "ledoit_wolf" if signal == "ICLABEL" else None
     csp = CSP(n_components=n_components, reg=reg, log=True, norm_trace=False)
-    csp.fit(prep(epochs.get_data()), epochs.events[:, 2])
-    return csp.patterns_[:n_components]
+    csp.fit(X, epochs.events[:, 2])
 
-
-#Ligne 1 : le signal demandé, ligne 2 : ICLabel (cible), ligne 3 : ART d'origine (non réentraîné)
-epochs = lit_epochs(args.Signal, args.Epoch)
-lignes = [(args.Signal + (f" (epoch {args.Epoch})" if args.Epoch else ""), patterns(epochs, args.Signal)),
-          ("ICLabel", patterns(lit_epochs("ICLABEL", None), "ICLABEL")),
-          ("ART_Orig", patterns(lit_epochs("ART", None), "ART"))]
+    nom = "ART_Orig" if (signal == "ART" and epoch_num is None) else signal
+    noms.append(nom + (f" (epoch {epoch_num})" if epoch_num else ""))
+    patterns.append(csp.patterns_[:n_components])
 
 #Topographies des composantes : ce que chaque filtre CSP lit à la surface du scalp
-fig, axes = plt.subplots(len(lignes), n_components, figsize=(3 * n_components, 11))
-for ligne, (nom, pats) in enumerate(lignes):
+fig, axes = plt.subplots(len(noms), n_components, figsize=(3 * n_components, 11))
+for ligne in range(len(noms)):
     for i in range(n_components):
-        mne.viz.plot_topomap(pats[i], epochs.info, axes=axes[ligne, i], show=False)
-        axes[ligne, i].set_title(nom + f" - CSP {i + 1}", fontsize=10)
+        mne.viz.plot_topomap(patterns[ligne][i], info, axes=axes[ligne, i], show=False)
+        axes[ligne, i].set_title(noms[ligne] + f" - CSP {i + 1}", fontsize=10)
 
 fig.suptitle(sujet_id)
 fig.tight_layout(h_pad=3)

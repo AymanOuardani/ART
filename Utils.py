@@ -1,11 +1,12 @@
 """
-Application des modeles de debruitage ART sur des essais (30 x 1024).
-Adapte de ArtifactRemovalTransformer/utils.py, pour des donnees deja pretraitees.
+Fonctions partagées par les autres scripts — ce fichier ne se lance pas directement.
+
+Chargement d'un modèle de débruitage et application à un essai (30 canaux x 1024 points) :
+get_model, decode_data et clean_epoch, adaptés d'ArtifactRemovalTransformer/utils.py pour des
+données déjà prétraitées. Plus sauve_feuille_loso, qui tient à jour le classeur des courbes
+d'entraînement d'ART.
 """
 
-import json
-import shutil
-import subprocess
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -81,20 +82,11 @@ def clean_epoch(epoch, mode, sujet_id=None, epoch_num=None):
     return decoded * std + avg
 
 
-def sauve_feuille_loso(fichier, sujet, rmse_train, rmse_val, pertes_batches,
-                       rmse_identite_val=None, rmse_identite_test=None):
+def sauve_feuille_loso(fichier, sujet, rmse_train, rmse_val, pertes_batches):
     # Ecrit/actualise une feuille (nom = sujet exclu) dans un classeur Excel :
     #   - epoch_train_rmse / epoch_val_rmse : evolution globale en µV (1 valeur par epoch)
-    #   - rmse_identite_val / rmse_identite_test : baseline "recopier l'entree" (1 seule
-    #     valeur, constante pour le sujet), point de comparaison des deux colonnes ci-dessus
     #   - batch_epoch_N : evolution locale des pertes batch au sein de l'epoch N
-    # NB : noms distincts des anciennes colonnes epoch_train_mse/epoch_eval_mse, qui
-    # contenaient un MSE sur signal normalise (sans unite) : les deux ne se melangent pas.
     colonnes = {"epoch_train_rmse": rmse_train, "epoch_val_rmse": rmse_val}
-    if rmse_identite_val is not None:
-        colonnes["rmse_identite_val"] = [rmse_identite_val]
-    if rmse_identite_test is not None:
-        colonnes["rmse_identite_test"] = [rmse_identite_test]
     for i, pertes in enumerate(pertes_batches):
         colonnes[f"batch_epoch_{i + 1}"] = pertes
     feuille = pd.DataFrame({nom: pd.Series(vals) for nom, vals in colonnes.items()})
@@ -109,79 +101,3 @@ def sauve_feuille_loso(fichier, sujet, rmse_train, rmse_val, pertes_batches,
     with pd.ExcelWriter(fichier, engine="openpyxl") as writer:
         for nom, df in feuilles.items():
             df.to_excel(writer, sheet_name=str(nom)[:31], index=False)
-
-
-def maj_tableau_tex(json_path, tex_path, cle, ligne_tex, macro, ordre=None):
-    # Met a jour une ligne d'un tableau LaTeX (Rapport_ART.pdf) : chaque ligne est
-    # gardee dans un sidecar JSON (une entree par cle, ex. un Method d'Evaluation.py),
-    # puis le fichier .tex regenere une macro \macro{...} (chargee HORS tableau,
-    # \input a l'interieur d'un tabular casse l'alignement avec cette distribution LaTeX).
-    data = json.loads(json_path.read_text(encoding="utf-8")) if json_path.exists() else {}
-    data[cle] = ligne_tex
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    cles = [c for c in (ordre or data) if c in data]
-    contenu = "\n".join(data[c] for c in cles)
-    tex_path.parent.mkdir(parents=True, exist_ok=True)
-    tex_path.write_text(f"\\def\\{macro}{{{contenu}}}\n", encoding="utf-8", newline="\n")
-
-
-def genere_recap(rapport_dir, sujets, colonnes, suffixe, macro, meilleur=None):
-    # Construit un tableau recapitulatif (une ligne par sujet, une colonne par cle)
-    # a partir des sidecars JSON deja ecrits par maj_tableau_tex (accuracy ou mse) ;
-    # "-" si la cle n'a pas encore ete calculee pour ce sujet.
-    # meilleur="max"/"min" : ajoute une ligne "Moyenne" par colonne, avec la meilleure
-    # moyenne mise en gras (max pour l'accuracy, min pour le MSE).
-    lignes = []
-    valeurs_colonnes = [[] for _ in colonnes]
-    for sujet in sujets:
-        f = rapport_dir / "data" / f"{sujet}_{suffixe}.json"
-        data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
-        cellules = [sujet]
-        for i, cle in enumerate(colonnes):
-            if cle in data:
-                valeur = data[cle].split("&", 1)[1].rsplit("\\\\", 1)[0].strip()
-                cellules.append(valeur)
-                try:
-                    valeurs_colonnes[i].append(float(valeur.split("$\\pm$")[0]))
-                except ValueError:
-                    pass
-            else:
-                cellules.append("-")
-        lignes.append(" & ".join(cellules) + r" \\")
-
-    if meilleur:
-        fmt = "{:.2e}" if suffixe == "mse" else "{:.2f}"
-        moyennes = [sum(v) / len(v) if v else None for v in valeurs_colonnes]
-        ecarts = [np.std(v) if v else None for v in valeurs_colonnes]
-        candidats = [m for m in moyennes if m is not None]
-        top = (max if meilleur == "max" else min)(candidats) if candidats else None
-        cellules = [r"\textbf{Moyenne}"]
-        for m, e in zip(moyennes, ecarts):
-            if m is None:
-                cellules.append("-")
-            else:
-                texte = fmt.format(m) if suffixe == "mse" else f"{fmt.format(m)} $\\pm$ {fmt.format(e)}"
-                cellules.append(rf"\textbf{{{texte}}}" if m == top else texte)
-        lignes.append(r"\midrule " + " & ".join(cellules) + r" \\")
-
-    tex_path = rapport_dir / "data" / f"recap_{suffixe}.tex"
-    tex_path.parent.mkdir(parents=True, exist_ok=True)
-    tex_path.write_text(f"\\def\\{macro}{{" + "\n".join(lignes) + "}\n", encoding="utf-8", newline="\n")
-
-
-def recompile_latex(tex_path):
-    # Recompile un rapport LaTeX (2 passes, pour la table des matieres) sans jamais
-    # faire planter le script appelant (pdflatex absent, PDF ouvert/verrouille, etc.)
-    if shutil.which("pdflatex") is None:
-        print(f"  (pdflatex introuvable : rapport {tex_path.name} non recompile)")
-        return
-    resultat = None
-    for _ in range(2):
-        resultat = subprocess.run(["pdflatex", "-interaction=nonstopmode", tex_path.name],
-                                  cwd=tex_path.parent, capture_output=True, text=True)
-    if resultat is not None and resultat.returncode != 0:
-        print(f"  (echec de compilation de {tex_path.name} - verifie qu'il n'est pas ouvert ailleurs)")
-    else:
-        print(f"  -> rapport mis a jour : {tex_path}")

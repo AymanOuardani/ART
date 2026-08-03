@@ -1,3 +1,16 @@
+"""
+Met un signal continu EEGBCI au format attendu par les modèles : 30 canaux du template ART,
+rééchantillonnage 160 -> 256 Hz, filtre FIR 1-50 Hz, puis découpage en blocs de 4 s autour
+des événements (3 classes : gauche, droite, repos).
+
+  python Pretraitement.py 1              brut    -> Output/Prétraité/S001_Pre.fif
+  python Pretraitement.py 1 --iclabel    ICLabel -> Output/Nettoyé/S001/ICLABEL.fif
+
+Le brut et sa version ICLabel passent par ce même script, donc par exactement le même
+traitement : c'est indispensable puisqu'ils sont ensuite comparés échantillon par échantillon
+et qu'ils forment la paire d'entraînement d'ART.
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np

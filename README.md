@@ -2,12 +2,11 @@
 
 Pipeline pour **débruiter** des signaux EEG d'imagerie motrice (base **EEGBCI**, imagerie
 main gauche vs main droite, runs 4/8/12) avec plusieurs modèles de débruitage
-(**ART, IC-U-Net, DuoCL, GCTNet, ICLabel**), puis **évaluer** l'effet du débruitage sur
-le décodage gauche / droite (**CSP + LDA**). Les débruiteurs mono-canal sont entraînés sur
+(**ART, IC-U-Net, DuoCL, GCTNet, ICLabel**), puis **évaluer** l'effet du débruitage sur le
+décodage gauche / droite (**CSP + LDA**). Les débruiteurs mono-canal sont entraînés sur
 **EEGdenoiseNet**, ART est réentraîné en *leave-one-subject-out* sur EEGBCI.
 
-Les résultats sont consolidés dans un rapport LaTeX, `Résultats/Rapport_ART.pdf`
-(dossier hors dépôt).
+Tous les scripts affichent leurs résultats directement dans le terminal.
 
 ---
 
@@ -47,10 +46,9 @@ ART/
 ├── Databases/
 │   ├── EEGBCI/            # signal continu brut, 1 fichier -raw.fif par sujet
 │   ├── EEGBCI_ICLABEL/    # même signal nettoyé par ICLabel (produit par ICLABEL_Brut.py)
-│   └── EEGdenoiseNet/     # pour Training_DuoGCT.py
+│   └── EEGdenoiseNet/     # pour l'entraînement de DuoCL et GCTNet
 ├── Model/                 # architectures + poids .pth.tar
-├── Output/                # créé automatiquement par les scripts
-└── Résultats/             # rapport LaTeX (hors dépôt)
+└── Output/                # créé automatiquement par les scripts
 ```
 
 **3. Installer les dépendances** (Python 3.10–3.13)
@@ -60,7 +58,7 @@ pip install numpy scipy pandas scikit-learn mne mne-icalabel matplotlib tqdm ein
 ```
 
 > `openpyxl` est requis pour `resultats_LOSO.xlsx` (entraînement d'ART), `odfpy` pour
-> `resultats_accuracy.ods` (`Training_DuoGCT.py`).
+> `resultats_accuracy.ods` (DuoCL / GCTNet).
 
 > **GPU** (fortement conseillé pour l'entraînement) : installer la build CUDA de PyTorch
 > depuis <https://pytorch.org> à la place de `torch`.
@@ -86,8 +84,9 @@ python Clean_Model.py DuoCL 1-10   # sujets 1 à 10 seulement
 python Clean_Model.py GCTNet --force
 
 # 4. Évaluation CSP + LDA (gauche vs droite)
-python Evaluation.py brut 1        # un sujet, et met à jour le rapport
+python Evaluation.py brut 1        # un sujet
 python Evaluation.py ART           # tous les sujets, moyenne finale
+python Evaluation.py ART 4 1       # ART au checkpoint LOSO de l'epoch 1, sujet 4
 ```
 
 Tous les signaux comparés partent du même `Prétraité` (3 classes) ; le repos est retiré
@@ -106,7 +105,7 @@ mêmes essais.
 
 | Modèle | Description |
 |--------|--------------|
-| `ART` | Transformer ART, poids d'origine (appelé `ART_Orig` dans le rapport) |
+| `ART` | Transformer ART, poids d'origine (appelé `ART_Orig` dans les comparaisons) |
 | `ART_ICLABEL` | ART réentraîné en LOSO contre ICLabel — nécessite un numéro d'epoch |
 | `ICUNet` / `ICUNet++` / `ICUNet_attn` | familles IC-U-Net |
 | `DuoCL` / `GCTNet` | débruiteurs mono-canal (EEGdenoiseNet) |
@@ -114,51 +113,55 @@ mêmes essais.
 
 ---
 
-## Entraînement des débruiteurs
+## Entraînement
 
 ```bash
-python Train_ART.py                          # ART neuf, LOSO, cible = ICLabel
-python Training_DuoGCT.py DuoCL --device gpu
-python Training_DuoGCT.py all --device cpu    # DuoCL + GCTNet
+python Train_Model.py ART                    # LOSO sur EEGBCI, cible = ICLabel
+python Train_Model.py DuoCL --device gpu     # sur EEGdenoiseNet
+python Train_Model.py GCTNet
+python Train_Model.py all                    # DuoCL puis GCTNet
 ```
 
-- **`Train_ART.py`** : pas d'argument, hyperparamètres fixes (60 epochs, batch 32, lr 0.01,
-  Adam). Pour chaque sujet exclu, un modèle neuf est entraîné sur 86 des 108 autres sujets,
-  validé sur les 22 restants, puis testé sur le sujet exclu au checkpoint de la meilleure
-  epoch de validation. Produit un checkpoint par sujet **et par epoch** dans
-  `Model/ART_ICLABEL/modelsave/SXXX/Epoch_NY/`, plus les courbes dans `resultats_LOSO.xlsx`.
-  > **Attention** : aucune reprise. Le relancer réentraîne tout depuis le début et **écrase**
-  > les checkpoints existants avec des poids différents.
-- **`Training_DuoGCT.py`** (DuoCL/GCTNet, sur EEGdenoiseNet) : `DuoCL` · `GCTNet` · `all`.
-  Options : `--device {auto,cpu,gpu}` · `--gpu N` · `--noise {EOG,EMG,Hybrid}` ·
-  `--epochs N` · `--batch_size N`.
+Options communes : `--device {auto,cpu,gpu}` · `--gpu N` · `--epochs N` · `--batch_size N`.
+Pour DuoCL et GCTNet : `--noise {EOG,EMG,Hybrid}`.
+Pour ART : `--sujets S004,S007` pour ne relancer qu'une partie des folds, `--baseline` pour
+n'afficher que la baseline identité sans entraîner.
+
+**ART** : pour chaque sujet exclu, un modèle neuf est entraîné sur 86 des 108 autres sujets,
+validé sur les 22 restants, puis testé sur le sujet exclu au checkpoint de la meilleure epoch
+de validation. Le pas décroît en cosinus sur les 60 epochs. Chaque epoch affiche son RMSE
+d'entraînement et de validation, en regard de la **baseline identité** — l'erreur qu'on
+obtiendrait en recopiant simplement l'entrée bruitée, qui donne l'ordre de grandeur à battre.
+Produit un checkpoint par sujet **et par epoch** dans `Model/ART_ICLABEL/modelsave/SXXX/Epoch_NY/`,
+plus les courbes dans `resultats_LOSO.xlsx`.
+
+> **Attention** : aucune reprise. Relancer réentraîne tout depuis le début et **écrase** les
+> checkpoints existants avec des poids différents.
 
 ---
 
-## Rapport
+## Analyse
 
 ```bash
-python Rapport_Sujets.py 1-16                           # chaîne complète, plage de sujets
-python Rapport_Sujets.py 1-16 --modele ART_ICLABEL_v2   # autre dossier d'entraînement
-python Rapport_Sujets.py 1-16 --sans-art                # sans les 60 epochs (rapide)
+python Metrics.py tout 1           # RMS, RMSE, MAE et SNR de chaque méthode face à ICLabel
+python Metrics.py SNR 1            # une seule métrique
+python Metrics.py tout 1 --epoch 40    # ART pris à un checkpoint LOSO précis
+
+python ART_Epochs.py 1-16          # applique les 60 checkpoints d'un sujet et affiche,
+                                   # pour chaque epoch, RMSE contre ICLabel et accuracy
+python mse_graph.py 4              # courbe train/validation de l'entraînement LOSO
 ```
 
-`Rapport_Sujets.py` enchaîne, pour chaque sujet, les scripts ci-dessous puis compile le PDF
-une seule fois. Ils restent utilisables séparément :
+`ART_Epochs.py` enregistre ses résultats dans `Output/ART/SXXX/resultats_epochs.json` après
+**chaque** epoch : une exécution interrompue reprend sans rien recalculer. Il relève aussi la
+date du checkpoint utilisé et **recalcule automatiquement** tout résultat issu d'un checkpoint
+modifié depuis — indispensable après un réentraînement. La meilleure epoch de validation est
+lue directement dans les checkpoints, et son signal débruité est conservé en `.fif` pour
+`CSP.py`, `Visualize.py` et `Evaluation.py`. Options : `--meilleure-seule`, `--force`,
+`--modele` pour pointer un autre dossier d'entraînement.
 
-| Script | Rôle |
-|--------|------|
-| `ART_Epochs.py` | applique les 60 checkpoints LOSO d'un sujet, mesure RMSE et accuracy par epoch, écrit le tableau et les deux figures |
-| `mse_eval.py` | RMSE d'une méthode contre ICLabel, pour un sujet |
-| `mse_graph.py` | courbe train/validation de l'entraînement LOSO d'un sujet |
-| `Recap_ART.py` | tableau récapitulatif à la meilleure epoch de validation |
-
-`ART_Epochs.py` écrit ses résultats dans `Résultats/data/SXXX_epochs.json` après **chaque**
-epoch : une exécution interrompue reprend sans rien recalculer. Il enregistre aussi la date
-du checkpoint utilisé, et **recalcule automatiquement** tout résultat issu d'un checkpoint
-modifié depuis — indispensable après un réentraînement. Options utiles :
-`--meilleure-seule` (seulement la meilleure epoch), `--rapport-seul` (régénère tableau et
-figures sans recalcul), `--sans-latex` (plusieurs instances en parallèle).
+Le SNR se lit comme un rapport signal/bruit : 0 dB signifie que l'erreur a la même amplitude
+que le signal de référence, 6 dB qu'elle en fait la moitié, 14 dB le cinquième.
 
 ---
 
@@ -168,8 +171,8 @@ figures sans recalcul), `--sans-latex` (plusieurs instances en parallèle).
 python Visualize.py brut 1         # signal continu, brut et nettoyé ICLabel
 python Visualize.py pretraite 1    # essais prétraités
 python Visualize.py ART 1          # avant / après débruitage (2 fenêtres)
+python Visualize.py ART 4 1        # avant / après, checkpoint LOSO de l'epoch 1
 python CSP.py brut 1               # topographies des filtres CSP
-python RMS.py 1                    # RMS de chaque méthode (idem RMSE.py, SNR.py, MAE.py)
 ```
 
 ---
@@ -181,15 +184,14 @@ python RMS.py 1                    # RMS de chaque méthode (idem RMSE.py, SNR.p
 | `ICLABEL_Brut.py` | ICA + tri ICLabel sur le signal continu 64 canaux → `Databases/EEGBCI_ICLABEL/` |
 | `Pretraitement.py` | signal continu → format ART (30 canaux, 256 Hz, essais de 4 s) ; `--iclabel` pour la version nettoyée |
 | `Clean_Model.py` | applique **un** modèle de débruitage → cache dans `Output/Nettoyé/` |
-| `Train_ART.py` | entraîne un ART neuf en LOSO sur EEGBCI |
-| `Training_DuoGCT.py` | entraîne DuoCL/GCTNet sur EEGdenoiseNet |
+| `Train_Model.py` | entraîne ART (LOSO sur EEGBCI), DuoCL ou GCTNet (sur EEGdenoiseNet) |
 | `Evaluation.py` | décodage gauche/droite **CSP + LDA** |
-| `Rapport_Sujets.py` | régénère les pages du rapport pour une plage de sujets |
-| `ART_Epochs.py` · `Recap_ART.py` · `mse_eval.py` · `mse_graph.py` | briques du rapport |
-| `CSP.py` · `Brut_TestCSP.py` | filtres CSP : topographies, balayage de `n_components` |
-| `RMS.py` · `RMSE.py` · `SNR.py` · `MAE.py` | métriques d'un sujet, méthode par méthode |
+| `Metrics.py` | RMS, RMSE, MAE et SNR d'un sujet face à ICLabel |
+| `ART_Epochs.py` | applique les checkpoints LOSO epoch par epoch : RMSE et accuracy |
+| `mse_graph.py` | courbe train/validation d'un entraînement LOSO |
+| `CSP.py` | topographies des filtres CSP, pour voir ce que le décodeur regarde |
 | `Visualize.py` | inspection des signaux (brut / prétraité / débruité) |
-| `Utils.py` | chargement d'un modèle, débruitage d'un essai, écriture du rapport |
+| `Utils.py` | chargement d'un modèle, débruitage d'un essai, écriture du classeur LOSO |
 
-> Ordre logique : `ICLABEL_Brut` → `Pretraitement` → `Train_ART` / `Training_DuoGCT` →
-> `Clean_Model` → `Evaluation` / `Rapport_Sujets`.
+> Ordre logique : `ICLABEL_Brut` → `Pretraitement` → `Train_Model` → `Clean_Model` →
+> `Evaluation` / `Metrics`.

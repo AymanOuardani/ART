@@ -1,3 +1,16 @@
+"""
+Applique un modèle de débruitage aux essais prétraités d'un ou plusieurs sujets, et met le
+résultat en cache dans Output/Nettoyé/SXXX/ (un fichier par modèle, recalculé avec --force).
+
+  python Clean_Model.py ART                 tous les sujets
+  python Clean_Model.py DuoCL 1-10          sujets 1 à 10
+  python Clean_Model.py GCTNet 1,2,5 --force
+  python Clean_Model.py ART_ICLABEL 1 40    ART réentraîné, checkpoint LOSO de l'epoch 40
+
+Les réseaux 30 canaux (ART, IC-U-Net) traitent l'essai entier ; DuoCL et GCTNet sont
+mono-canal et sont appliqués canal par canal, sur des fenêtres de 512 points.
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np

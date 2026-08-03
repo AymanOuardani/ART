@@ -1,3 +1,14 @@
+"""
+Produit le signal de référence du projet : une ICA (infomax étendu) décomposée sur le signal
+CONTINU à 64 canaux, dont ICLabel trie les composantes. Tout ce qui n'est classé ni "brain"
+ni "other" est retiré, puis le signal reconstruit est enregistré.
+
+  python ICLABEL_Brut.py      tous les sujets, reprend là où il s'est arrêté
+
+Sortie : Databases/EEGBCI_ICLABEL/SXXX-raw.fif, à prétraiter ensuite avec
+Pretraitement.py --iclabel pour obtenir Output/Nettoyé/SXXX/ICLABEL.fif.
+"""
+
 import pathlib as pl
 import mne as mne
 from mne.datasets import eegbci

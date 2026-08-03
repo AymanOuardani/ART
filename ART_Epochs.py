@@ -1,13 +1,26 @@
+"""
+Suit ce qu'apprend ART au fil de son entraînement : chacun des 60 checkpoints d'un sujet est
+appliqué à ses essais, puis évalué sur les deux critères qui comptent — le RMSE contre
+ICLabel (fidélité à la cible) et l'accuracy CSP+LDA (information motrice conservée).
+
+  python ART_Epochs.py 1-16                 les 60 epochs des sujets 1 à 16
+  python ART_Epochs.py 4 --meilleure-seule  seulement la meilleure epoch de validation
+  python ART_Epochs.py 4 --rapport-seul     réaffiche le tableau sans recalculer
+  python ART_Epochs.py 4 --modele ART_v2    autre dossier d'entraînement dans Model/
+
+Les résultats sont enregistrés après chaque epoch dans Output/ART/SXXX/resultats_epochs.json :
+une exécution interrompue reprend sans rien recalculer. La date du checkpoint utilisé est
+gardée avec chaque résultat, si bien qu'un réentraînement invalide automatiquement les valeurs
+devenues périmées. Le signal de la meilleure epoch est conservé en .fif.
+"""
+
 import argparse as ap
 import json
 import pathlib as pl
 import time
 
 import numpy as np
-import pandas as pd
-import matplotlib
-matplotlib.use("Agg")   # tâche de fond : aucune fenêtre, on écrit directement les PNG
-import matplotlib.pyplot as plt
+import torch
 import mne as mne
 from mne.filter import filter_data
 from mne.decoding import CSP
@@ -26,12 +39,9 @@ Nettoye = Output / "Nettoyé"
 Sortie_ART = Output / "ART"                        # signal débruité de la meilleure epoch
 Model_Dir = pl.Path(r"C:\Users\aymen\Desktop\ART\Model")
 Modele_Defaut = "ART_ICLABEL"                      # dossier des checkpoints LOSO dans Model/
-Rapport_Tex = pl.Path(r"C:\Users\aymen\Desktop\ART\Résultats\Rapport_ART.tex")
-Images_Dir = Rapport_Tex.parent / "Images"
-Data_Dir = Rapport_Tex.parent / "data"
 
-#Signal de référence : l'ICA ICLabel appliquée au signal continu à 64 canaux (ICLABEL_Brut.py).
-#C'est la cible d'entraînement d'ART (cf. Train_ART.py) et le seul ICLabel du rapport.
+#Signal de référence : l'ICA ICLabel appliquée au signal continu à 64 canaux (ICLABEL_Brut.py),
+#c'est aussi la cible d'entraînement d'ART (cf. Train_Model.py)
 Reference = "ICLABEL.fif"
 N_EPOCHS = 60
 
@@ -45,21 +55,16 @@ clf = Pipeline([("CSP", CSP(n_components=4, reg=None, log=True, norm_trace=False
 cv = ShuffleSplit(N_iter, test_size=0.2, random_state=42)
 
 #Ligne de commande : quels sujets traiter
-parser = ap.ArgumentParser(description="ART (LOSO) epoch par epoch : RMSE et accuracy, pour le rapport")
+parser = ap.ArgumentParser(description="ART (LOSO) epoch par epoch : RMSE contre ICLabel et accuracy CSP+LDA")
 parser.add_argument("Sujets", nargs="?", default="1-109", help="ex. 1-16 ou 1,2,5 (défaut : 1-109)")
 parser.add_argument("--force", action="store_true", help="recalcule les epochs déjà enregistrées")
-parser.add_argument("--sans-latex", action="store_true",
-                    help="n'appelle pas pdflatex (à utiliser quand plusieurs instances tournent en parallèle)")
-parser.add_argument("--rapport-seul", action="store_true",
-                    help="régénère seulement le tableau et les figures depuis les résultats déjà calculés")
 parser.add_argument("--meilleure-seule", action="store_true",
-                    help="ne traite que la meilleure epoch de validation (signal .fif + métriques), sans les 59 autres")
+                    help="ne traite que la meilleure epoch de validation, sans les 59 autres")
 parser.add_argument("--modele", default=Modele_Defaut,
                     help=f"dossier des checkpoints LOSO dans Model/ (défaut : {Modele_Defaut})")
 args = parser.parse_args()
 
-Modele = Model_Dir / args.modele
-Fichier_Excel = Modele / "resultats_LOSO.xlsx"     # courbes train/validation de Train_ART.py
+Modelsave = Model_Dir / args.modele / "modelsave"
 
 #"1-16" ou "1,2,5" -> liste de sujets (même convention que Clean_Model.py)
 if "-" in args.Sujets:
@@ -75,13 +80,28 @@ def prep(X):
     return X[:, :, crop]                                # fenêtre [1,2]s
 
 
-def horodatage_checkpoint(sujet_id, ep):
-    # Date du checkpoint ayant servi au calcul. Train_ART.py n'a pas de reprise : le relancer
-    # réentraîne tout depuis le début et réécrit les checkpoints avec des poids différents,
-    # sans rien signaler. On garde cette date à côté de chaque résultat pour ne jamais
-    # réutiliser une valeur produite par un modèle qui n'existe plus.
-    f = Modele / "modelsave" / sujet_id / f"Epoch_N{ep}" / "checkpoint.pth.tar"
-    return round(f.stat().st_mtime, 3) if f.exists() else None
+def lit_checkpoint(sujet_id, ep):
+    # Chaque checkpoint porte son epoch et son RMSE de validation. On relève aussi la date du
+    # fichier : Train_Model.py n'a pas de reprise, le relancer réécrit les checkpoints avec des
+    # poids différents sans rien signaler, et il ne faut pas réutiliser un résultat périmé.
+    f = Modelsave / sujet_id / f"Epoch_N{ep}" / "checkpoint.pth.tar"
+    if not f.exists():
+        return None
+    c = torch.load(f, map_location="cpu", weights_only=False)
+    return {"rmse_val": float(c["rmse_val"]), "modele": round(f.stat().st_mtime, 3)}
+
+
+def meilleure_epoch_validation(sujet_id):
+    # Meilleure epoch = RMSE de validation minimal, lu dans les checkpoints eux-mêmes
+    val = {}
+    for ep in range(1, N_EPOCHS + 1):
+        c = lit_checkpoint(sujet_id, ep)
+        if c is not None:
+            val[ep] = c["rmse_val"]
+    if not val:
+        return None, None
+    meilleure = min(val, key=val.get)
+    return meilleure, val[meilleure]
 
 
 def phrase_epochs(numeros):
@@ -93,73 +113,40 @@ def phrase_epochs(numeros):
     return "aux epochs " + ", ".join(str(n) for n in numeros[:-1]) + f" et {numeros[-1]}"
 
 
-def courbe(eps, valeurs, optimums, ylabel, chemin):
-    # Même présentation que mse_graph.py : la courbe, et l'optimum (ou les ex æquo) en rouge
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.plot(eps, valeurs)
-    ymin, ymax = ax.get_ylim()
-    for ep in optimums:
-        v = valeurs[eps.index(ep)]
-        ax.scatter([ep], [v], color="red", zorder=5)
-        ax.vlines(ep, ymin, v, color="red", linestyle="--", linewidth=1)
-    ax.set_ylim(ymin, ymax)
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel(ylabel)
-    ax.grid(alpha=0.3)
-    fig.tight_layout()
-    Images_Dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(chemin, dpi=150)
-    plt.close(fig)
-
-
-def ecrit_rapport(sujet_id, res, rms_ref):
-    # Tableau, phrases et figures du sujet, à partir des epochs déjà calculées
+def affiche_tableau(sujet_id, res, rms_ref, meilleure):
+    # Tout le résultat du sujet à l'écran : le détail par epoch, puis les trois synthèses
     eps = sorted(int(e) for e in res)
     accs = [res[str(e)]["acc"] for e in eps]
     rmses = [res[str(e)]["rmse"] for e in eps]
-    Data_Dir.mkdir(parents=True, exist_ok=True)
 
-    lignes = [f"{e} & {res[str(e)]['acc']:.2f} $\\pm$ {res[str(e)]['std']:.2f} & {res[str(e)]['rmse']:.2f} \\\\"
-              for e in eps]
-    (Data_Dir / f"{sujet_id}_epochs.tex").write_text(
-        "\\def\\epochrows{\n" + "\n".join(lignes) + "}\n", encoding="utf-8", newline="\n")
+    print(f"\n{sujet_id} — {len(eps)}/{N_EPOCHS} epochs — RMS de la référence ICLabel : {rms_ref:.2f} µV")
+    print("  epoch |   accuracy    | RMSE (µV)")
+    for e in eps:
+        r = res[str(e)]
+        marque = "   <- meilleure epoch de validation" if e == meilleure else ""
+        print(f"   {e:4d} | {r['acc']:.2f} ± {r['std']:.2f}   |   {r['rmse']:6.2f}{marque}")
 
-    (Data_Dir / f"{sujet_id}_rms_ref_sentence.tex").write_text(
-        "\\def\\rmsrefsentence{Le RMS de référence (signal nettoyé par ICLabel) pour "
-        f"{sujet_id} est de {rms_ref:.1f} µV.}}\n", encoding="utf-8", newline="\n")
-
-    #Ex æquo cherchés sur les valeurs telles qu'elles sont affichées (2 décimales pour l'accuracy,
-    #1 pour le RMSE), sinon la phrase désignerait une epoch que le tableau ne distingue pas.
+    #Ex æquo cherchés sur les valeurs telles qu'affichées, sinon la synthèse désignerait une
+    #epoch que le tableau ne distingue pas
     acc_max = max(round(a, 2) for a in accs)
     rmse_min = min(round(r, 1) for r in rmses)
-    best_acc = [e for e, a in zip(eps, accs) if round(a, 2) == acc_max]
-    best_rmse = [e for e, r in zip(eps, rmses) if round(r, 1) == rmse_min]
-    (Data_Dir / f"{sujet_id}_epochs_sentences.tex").write_text(
-        f"\\def\\bestaccsentence{{La meilleure accuracy ({acc_max:.2f}) se présente "
-        f"{phrase_epochs(best_acc)}.}}\n"
-        f"\\def\\bestrmsesentence{{Le RMSE minimal ({rmse_min:.1f} µV) se présente "
-        f"{phrase_epochs(best_rmse)}.}}\n", encoding="utf-8", newline="\n")
+    print(f"\n  La meilleure accuracy ({acc_max:.2f}) se présente "
+          f"{phrase_epochs([e for e, a in zip(eps, accs) if round(a, 2) == acc_max])}.")
+    print(f"  Le RMSE minimal ({rmse_min:.1f} µV) se présente "
+          f"{phrase_epochs([e for e, r in zip(eps, rmses) if round(r, 1) == rmse_min])}.")
+    if str(meilleure) in res:
+        b = res[str(meilleure)]
+        print(f"  Au checkpoint retenu (epoch {meilleure}) : accuracy {b['acc']:.2f} ± {b['std']:.2f}, "
+              f"RMSE {b['rmse']:.2f} µV, SNR {b['snr']:.2f} dB.")
 
-    courbe(eps, accs, best_acc, "Accuracy", Images_Dir / f"{sujet_id}_epochs_accuracy.png")
-    courbe(eps, rmses, best_rmse, "RMSE (µV)", Images_Dir / f"{sujet_id}_epochs_rmse.png")
-
-
-if not Fichier_Excel.exists():
-    raise SystemExit(f"ERREUR : fichier introuvable : {Fichier_Excel}\n  (lance d'abord Train_ART.py)")
-feuilles = pd.read_excel(Fichier_Excel, sheet_name=None, engine="openpyxl")
 
 for s in sujets:
     sujet_id = "S" + str(s).zfill(3)
 
-    #L'entraînement LOSO du sujet doit être terminé : c'est lui qui donne la meilleure epoch
-    if sujet_id not in feuilles or "epoch_val_rmse" not in feuilles[sujet_id]:
-        print(f"{sujet_id} : aucune donnée d'entraînement dans {Fichier_Excel.name}, ignoré", flush=True)
+    meilleure, rmse_val_min = meilleure_epoch_validation(sujet_id)
+    if meilleure is None:
+        print(f"{sujet_id} : aucun checkpoint dans {Modelsave}, ignoré", flush=True)
         continue
-    val = feuilles[sujet_id]["epoch_val_rmse"].dropna().values
-    if len(val) < N_EPOCHS:
-        print(f"{sujet_id} : entraînement incomplet ({len(val)}/{N_EPOCHS} epochs), ignoré", flush=True)
-        continue
-    meilleure = int(np.argmin(val)) + 1
 
     f_brut = Pretraite / (sujet_id + "_Pre.fif")
     f_ref = Nettoye / sujet_id / Reference
@@ -167,45 +154,39 @@ for s in sujets:
         print(f"{sujet_id} : fichiers manquants ({f_brut.name} / {f_ref.name}), ignoré", flush=True)
         continue
 
-    #Reprise : les epochs déjà calculées sont relues au lieu d'être refaites
-    fichier_json = Data_Dir / f"{sujet_id}_epochs.json"
-    etat = json.loads(fichier_json.read_text(encoding="utf-8")) if fichier_json.exists() else {}
-    res = {} if args.force else etat.get("epochs", {})
-
-    #Régénération du tableau et des figures seuls, sans repasser par le débruitage
-    if args.rapport_seul:
-        if not res:
-            print(f"{sujet_id} : aucun résultat enregistré, ignoré", flush=True)
-            continue
-        ecrit_rapport(sujet_id, res, etat["rms_ref"])
-        print(f"{sujet_id} : {len(res)}/{N_EPOCHS} epochs, tableau et figures écrits", flush=True)
-        continue
-
     epochs_brut = mne.read_epochs(f_brut, preload=True)
     data_brut = epochs_brut.get_data()
     ref = mne.read_epochs(f_ref, preload=True).get_data()
     rms_ref = float(np.sqrt(np.mean(ref ** 2)) * 1e6)
-    print(f"{sujet_id} : meilleure epoch de validation = {meilleure} ({val.min():.2f} µV), "
+    print(f"{sujet_id} : meilleure epoch de validation = {meilleure} ({rmse_val_min:.2f} µV), "
           f"RMS de référence {rms_ref:.2f} µV", flush=True)
 
-    #Résultats issus d'un modèle qui a changé depuis : ils seront recalculés, pas réutilisés
-    perimes = [e for e, v in res.items() if v.get("modele") != horodatage_checkpoint(sujet_id, int(e))]
+    #Reprise : les epochs déjà calculées sont relues au lieu d'être refaites, sauf si le
+    #checkpoint qui les a produites a changé depuis
+    fichier_json = Sortie_ART / sujet_id / "resultats_epochs.json"
+    etat = json.loads(fichier_json.read_text(encoding="utf-8")) if fichier_json.exists() else {}
+    res = {} if args.force else etat.get("epochs", {})
+
+    perimes = []
+    for e, v in res.items():
+        c = lit_checkpoint(sujet_id, int(e))
+        if c is None or v.get("modele") != c["modele"]:
+            perimes.append(e)
     if perimes:
         print(f"{sujet_id} : {len(perimes)} epoch(s) calculées avec un checkpoint qui a changé "
               f"depuis (réentraînement) -> recalcul", flush=True)
 
-    #La meilleure epoch d'abord : c'est celle du récapitulatif, un run interrompu la fournit quand même
+    #La meilleure epoch d'abord : c'est celle qui compte, un run interrompu la fournit quand même
     a_traiter = [meilleure]
     if not args.meilleure_seule:
         a_traiter += [e for e in range(1, N_EPOCHS + 1) if e != meilleure]
+
     for ep in a_traiter:
-        horodatage = horodatage_checkpoint(sujet_id, ep)
+        c = lit_checkpoint(sujet_id, ep)
+        if c is None:
+            continue
         deja = res.get(str(ep))
-        #On saute une epoch seulement si son résultat vient bien du checkpoint actuel ; et pour
-        #la meilleure epoch, il faut en plus que le bloc de métriques porte sur cette epoch-là
-        #(après réentraînement, la meilleure epoch de validation change).
-        if deja is not None and deja.get("modele") == horodatage \
-                and (ep != meilleure or etat.get("meilleure", {}).get("epoch") == meilleure):
+        if deja is not None and deja.get("modele") == c["modele"]:
             continue
         debut = time.time()
 
@@ -221,27 +202,21 @@ for s in sujets:
                             tmin=epochs_brut.tmin, event_id=epochs_brut.event_id)["gauche", "droite"]
         scores = cross_val_score(clf, prep(e.get_data()), e.events[:, 2], cv=cv)
         res[str(ep)] = {"rmse": rmse, "acc": float(scores.mean()), "std": float(scores.std()),
-                        "modele": horodatage}
+                        "snr": float(20 * np.log10(rms_ref / rmse)), "modele": c["modele"]}
 
-        #Meilleure epoch : signal conservé (CSP.py, vérifications) et métriques du récapitulatif
+        #Meilleure epoch : le signal débruité est conservé, pour CSP.py, Visualize.py et Evaluation.py
         if ep == meilleure:
             dossier = Sortie_ART / sujet_id
             dossier.mkdir(parents=True, exist_ok=True)
             mne.EpochsArray(data_clean, epochs_brut.info, epochs_brut.events,
                             tmin=epochs_brut.tmin, event_id=epochs_brut.event_id).save(
                 dossier / f"ART_epoch{ep}.fif", overwrite=True)
-            etat["meilleure"] = {"epoch": ep, "rmse": rmse,
-                                 "snr": float(20 * np.log10(rms_ref / rmse)),
-                                 "acc": res[str(ep)]["acc"], "std": res[str(ep)]["std"]}
 
+        #Enregistré après chaque epoch : une exécution interrompue reprend sans rien recalculer
         etat.update({"meilleure_epoch": meilleure, "rms_ref": rms_ref, "epochs": res})
+        fichier_json.parent.mkdir(parents=True, exist_ok=True)
         fichier_json.write_text(json.dumps(etat, indent=1), encoding="utf-8")
         print(f"  {sujet_id} epoch {ep}/{N_EPOCHS} : RMSE {rmse:.2f} µV, "
               f"acc {scores.mean():.2f} +/- {scores.std():.2f} ({time.time() - debut:.0f}s)", flush=True)
 
-    ecrit_rapport(sujet_id, res, rms_ref)
-    print(f"{sujet_id} : {len(res)}/{N_EPOCHS} epochs, tableau et figures écrits", flush=True)
-    if Rapport_Tex.exists() and not args.sans_latex:
-        Utils.recompile_latex(Rapport_Tex)
-
-print("TERMINÉ")
+    affiche_tableau(sujet_id, res, rms_ref, meilleure)

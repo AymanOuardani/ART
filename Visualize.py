@@ -1,3 +1,15 @@
+"""
+Ouvre les fenêtres MNE pour regarder un signal à l'œil, avant et après débruitage.
+
+  python Visualize.py brut 1         signal continu, brut puis nettoyé ICLabel (2 fenêtres)
+  python Visualize.py pretraite 1    essais prétraités
+  python Visualize.py ART 1          avant / après débruitage (2 fenêtres)
+  python Visualize.py ART 4 1        avant / après, checkpoint LOSO de l'epoch 1
+
+Signaux : brut · pretraite · ART · ICUNet · ICUNet++ · ICUNet_attn · DuoCL · GCTNet · ICLABEL
+Les essais sont colorés par classe (gauche, droite, repos).
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np
@@ -20,12 +32,6 @@ fichiers_apres = {"ART": "ART.fif",
 
 #Couleurs des évènements (gauche/droite/repos)
 couleurs_evenements = {"gauche": "tab:blue", "droite": "tab:red", "repos": "tab:green"}
-
-def couleurs(epochs):
-    #les évènements sauvegardés sont espacés d'1 échantillon (index de bloc, pas un vrai temps) :
-    #sans ça MNE les croit tous superposés et empile les étiquettes à l'affichage
-    epochs.events[:, 0] = np.arange(len(epochs)) * len(epochs.times)
-    return {nom: c for nom, c in couleurs_evenements.items() if nom in epochs.event_id}
 
 #Ligne de commande : quoi visualiser + numéro du sujet
 signaux = ["brut", "pretraite", *fichiers_apres]
@@ -73,8 +79,14 @@ if args.Signal == "brut":
 elif args.Signal == "pretraite":
     #epochs prétraités (une fenêtre)
     epochs = mne.read_epochs(Pretraite / (sujet_id + "_Pre.fif"), preload=True)
+
+    #les évènements sauvegardés sont espacés d'1 échantillon (index de bloc, pas un vrai temps) :
+    #sans ça MNE les croit tous superposés et empile les étiquettes à l'affichage
+    epochs.events[:, 0] = np.arange(len(epochs)) * len(epochs.times)
+    couleurs = {nom: c for nom, c in couleurs_evenements.items() if nom in epochs.event_id}
+
     epochs.plot(title="Sujet " + sujet_id + " - PRÉTRAITÉ", events=True, event_id=True,
-                event_color=couleurs(epochs), block=True)
+                event_color=couleurs, block=True)
 
 else:
     #avant (prétraité) vs après (débruité) en 2 fenêtres séparées
@@ -88,7 +100,15 @@ else:
         titre_apres = "APRÈS " + args.Signal
     avant = mne.read_epochs(fichier_avant, preload=True)
     apres = mne.read_epochs(fichier_apres, preload=True)
+
+    #les évènements sauvegardés sont espacés d'1 échantillon (index de bloc, pas un vrai temps) :
+    #sans ça MNE les croit tous superposés et empile les étiquettes à l'affichage
+    avant.events[:, 0] = np.arange(len(avant)) * len(avant.times)
+    apres.events[:, 0] = np.arange(len(apres)) * len(apres.times)
+    couleurs_avant = {nom: c for nom, c in couleurs_evenements.items() if nom in avant.event_id}
+    couleurs_apres = {nom: c for nom, c in couleurs_evenements.items() if nom in apres.event_id}
+
     avant.plot(title="Sujet " + sujet_id + " - AVANT " + args.Signal, events=True, event_id=True,
-               event_color=couleurs(avant), block=False)
+               event_color=couleurs_avant, block=False)
     apres.plot(title="Sujet " + sujet_id + " - " + titre_apres, events=True, event_id=True,
-               event_color=couleurs(apres), block=True)
+               event_color=couleurs_apres, block=True)
