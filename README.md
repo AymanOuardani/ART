@@ -46,7 +46,7 @@ Arborescence attendue :
 ART/
 ├── Databases/
 │   ├── EEGBCI/            # signal continu brut, 1 fichier -raw.fif par sujet
-│   ├── EEGBCI_ICLABEL/    # même signal nettoyé par ICLabel (produit par ICLABEL.py)
+│   ├── EEGBCI_ICLABEL/    # même signal nettoyé par ICLabel (produit par ICLABEL_Brut.py)
 │   └── EEGdenoiseNet/     # pour Training_Model.py
 ├── Model/                 # architectures + poids .pth.tar
 ├── Output/                # créé automatiquement par les scripts
@@ -78,7 +78,7 @@ python ICLABEL_Brut.py             # tous les sujets, reprend là où il s'est a
 # 2. Prétraitement : 30 canaux, 256 Hz, blocs de 4 s
 #    3 classes : gauche, droite, repos (tout le signal)
 python Pretraitement.py 1            # brut     -> Output/Prétraité/S001_Pre.fif
-python Pretraitement.py 1 --iclabel  # ICLabel  -> Output/Nettoyé/S001/ICLABEL_Amélioré.fif
+python Pretraitement.py 1 --iclabel  # ICLabel  -> Output/Nettoyé/S001/ICLABEL.fif
 
 # 3. Débruitage -> Output/Nettoyé/S001/<modele>.fif
 python Clean_Model.py ART          # tous les sujets par défaut
@@ -139,9 +139,9 @@ python Training_Model.py all --device cpu    # DuoCL + GCTNet
 ## Rapport
 
 ```bash
-python Rapport_Sujets.py 1-16      # chaîne complète pour une plage de sujets
-python Rapport_Sujets.py 1-16 --modele ART_ICLABEL_Amélioré   # autre entraînement
-python Rapport_Sujets.py 1-16 --sans-art                      # sans les 60 epochs (rapide)
+python Rapport_Sujets.py 1-16                           # chaîne complète, plage de sujets
+python Rapport_Sujets.py 1-16 --modele ART_ICLABEL_v2   # autre dossier d'entraînement
+python Rapport_Sujets.py 1-16 --sans-art                # sans les 60 epochs (rapide)
 ```
 
 `Rapport_Sujets.py` enchaîne, pour chaque sujet, les scripts ci-dessous puis compile le PDF

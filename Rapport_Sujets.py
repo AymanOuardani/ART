@@ -3,8 +3,8 @@ Enchaîne toute la chaîne du rapport pour une plage de sujets, avec une seule c
 LaTeX à la fin (au lieu d'une par script, soit une centaine d'appels inutiles à pdflatex).
 
   python Rapport_Sujets.py 1-16
-  python Rapport_Sujets.py 1-16 --modele ART_ICLABEL_Amélioré   # autre entraînement
-  python Rapport_Sujets.py 1-16 --sans-art                      # sans les 60 epochs (rapide)
+  python Rapport_Sujets.py 1-16 --modele ART_ICLABEL_v2   # autre dossier d'entraînement
+  python Rapport_Sujets.py 1-16 --sans-art                # sans les 60 epochs (rapide)
 
 Pour chaque sujet : les 60 epochs d'ART (tableau + figures), l'accuracy d'ART_Orig et
 d'ICLabel, le RMSE des six méthodes contre ICLabel, et la courbe train/validation.

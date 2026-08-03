@@ -28,7 +28,7 @@ parser = ap.ArgumentParser(description="Prétraitement EEGBCI")
 parser.add_argument("Sujet", type=int, help="Numéro du sujet (1-109)")
 parser.add_argument("--iclabel", action="store_true",
                     help="prétraite le signal nettoyé par ICLabel (cf. ICLABEL_Brut.py) au lieu du "
-                         "brut -> Output/Nettoyé/SXXX/ICLABEL_Amélioré.fif")
+                         "brut -> Output/Nettoyé/SXXX/ICLABEL.fif")
 args = parser.parse_args()
 sujet_id = "S" + str(args.Sujet).zfill(3)
 
@@ -63,7 +63,7 @@ events, eid = mne.events_from_annotations(raw)
 scale = 256 / raw.info["sfreq"]                                # indices 160 Hz -> 256 Hz
 labels = {eid["T0"]: 3, eid["T1"]: 1, eid["T2"]: 2}           # repos=3, classe1=1, classe2=2
 event_id = {classe1: 1, classe2: 2, "repos": 3}
-out = (Nettoye / sujet_id / "ICLABEL_Amélioré.fif") if args.iclabel else (Pretraite / (sujet_id + "_Pre.fif"))
+out = (Nettoye / sujet_id / "ICLABEL.fif") if args.iclabel else (Pretraite / (sujet_id + "_Pre.fif"))
 
 #Découpage en blocs de 4 s autour des événements retenus
 X, y = [], []

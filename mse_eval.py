@@ -33,7 +33,7 @@ args.Method = correspondance[args.Method.lower()]
 #ICLabel = l'ICA ICLabel appliquée au signal continu à 64 canaux (ICLABEL_Brut.py), qui est aussi
 #la cible d'entraînement d'ART : c'est la seule référence ICLabel du rapport.
 f_methode = Nettoye / sujet_id / (args.Method + ".fif")
-f_iclabel = Nettoye / sujet_id / "ICLABEL_Amélioré.fif"
+f_iclabel = Nettoye / sujet_id / "ICLABEL.fif"
 if not (f_methode.exists() and f_iclabel.exists()):
     raise SystemExit(f"ERREUR : fichier(s) manquant(s) pour {sujet_id}\n"
                      f"  {f_methode} (existe : {f_methode.exists()})\n"

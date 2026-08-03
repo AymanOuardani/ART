@@ -20,7 +20,7 @@ fichiers = {"brut": None,
             "ICUNet_attn": "ICUNet_attn.fif",
             "DuoCL": "DuoCL.fif",
             "GCTNet": "GCTNet.fif",
-            "ICLABEL": "ICLABEL_Amélioré.fif",   # ICLabel = ICA sur le raw 64 canaux
+            "ICLABEL": "ICLABEL.fif",   # ICLabel = ICA sur le raw 64 canaux
             "ICA": "ICA.fif"}
 
 #Paramètres CSP identiques à Evaluation.py (imagerie main gauche vs main droite, runs 4/8/12)

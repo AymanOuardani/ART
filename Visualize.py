@@ -16,7 +16,7 @@ ART_Epochs = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\ART")
 fichiers_apres = {"ART": "ART.fif",
                   "ICUNet": "ICUNet.fif", "ICUNet++": "ICUNet++.fif", "ICUNet_attn": "ICUNet_attn.fif",
                   "DuoCL": "DuoCL.fif", "GCTNet": "GCTNet.fif",
-                  "ICLABEL": "ICLABEL_Amélioré.fif",   # ICLabel = ICA sur le raw 64 canaux
+                  "ICLABEL": "ICLABEL.fif",   # ICLabel = ICA sur le raw 64 canaux
                   "ICA": "ICA.fif"}
 
 #Couleurs des évènements (gauche/droite/repos)

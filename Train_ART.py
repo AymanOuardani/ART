@@ -10,14 +10,14 @@ import Utils
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-#Cible = ICLABEL_Amélioré.fif (ICA ICLabel sur le signal continu à 64 canaux, cf.
-#ICLABEL_Brut.py) et non ICLABEL.fif : dossiers de sortie distincts pour ne pas écraser
-#l'entraînement précédent, dont les résultats sont déjà dans le rapport.
+#Cible = ICLABEL.fif, c'est-à-dire l'ICA ICLabel décomposée sur le signal continu à 64 canaux
+#(ICLABEL_Brut.py) puis prétraitée comme le brut (Pretraitement.py --iclabel).
+#ATTENTION : relancer ce script réécrit tous les checkpoints déjà présents dans Sortie.
 Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")   # entrée bruitée
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")                   # cible propre
-Cible = "ICLABEL_Amélioré.fif"
-Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL_Amélioré\modelsave")
-Fichier_Excel = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL_Amélioré\resultats_LOSO.xlsx")
+Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")       # cible propre
+Cible = "ICLABEL.fif"
+Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL\modelsave")
+Fichier_Excel = pl.Path(r"C:\Users\aymen\Desktop\ART\Model\ART_ICLABEL\resultats_LOSO.xlsx")
 Sortie.mkdir(parents=True, exist_ok=True)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')

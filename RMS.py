@@ -10,7 +10,7 @@ Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
 
 #Modèles à comparer : libellé -> fichier SXXX/....fif dans Nettoyé/
 #ICLabel = l'ICA ICLabel décomposée sur le signal continu à 64 canaux (ICLABEL_Brut.py)
-modeles = {"ICLABEL": "ICLABEL_Amélioré.fif", "ART": "ART.fif", "ICUNet": "ICUNet.fif",
+modeles = {"ICLABEL": "ICLABEL.fif", "ART": "ART.fif", "ICUNet": "ICUNet.fif",
            "ICUNet++": "ICUNet++.fif", "ICUNet_attn": "ICUNet_attn.fif",
            "DuoCL": "DuoCL.fif", "GCTNet": "GCTNet.fif"}
 

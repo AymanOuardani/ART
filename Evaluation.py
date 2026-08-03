@@ -38,7 +38,7 @@ fichiers = {"brut": None,
             "ICUNet_attn": "ICUNet_attn.fif",
             "DuoCL": "DuoCL.fif",
             "GCTNet": "GCTNet.fif",
-            "ICLABEL": "ICLABEL_Amélioré.fif",   # ICLabel = ICA ICLabel sur le raw 64 canaux (ICLABEL_Brut.py)
+            "ICLABEL": "ICLABEL.fif",   # ICLabel = ICA ICLabel sur le raw 64 canaux (ICLABEL_Brut.py)
             "ICA": "ICA.fif"}   # tous viennent de Prétraité : le repos T0 est retiré plus bas
 
 #Paramètres CSP + LDA (identiques à la référence MNE)

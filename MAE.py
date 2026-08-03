@@ -18,7 +18,7 @@ args = parser.parse_args()
 sujet_id = "S" + str(args.Sujet).zfill(3)
 
 #Lecture d'ICLabel (référence) : l'ICA ICLabel décomposée sur le signal continu à 64 canaux
-f_iclabel = Nettoye / sujet_id / "ICLABEL_Amélioré.fif"
+f_iclabel = Nettoye / sujet_id / "ICLABEL.fif"
 if not f_iclabel.exists():
     raise SystemExit(f"ERREUR : fichier introuvable : {f_iclabel}")
 iclabel = mne.read_epochs(f_iclabel, preload=True)

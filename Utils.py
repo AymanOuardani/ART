@@ -26,7 +26,7 @@ def get_model(mode, sujet_id=None, epoch_num=None):
     # Construit et charge le modele une seule fois (mise en cache)
     # ART_ICLABEL* : un checkpoint par sujet exclu (LOSO) et par epoch d'entrainement,
     # dans Model/<mode>/modelsave/SXXX/Epoch_NY/checkpoint.pth.tar. Le prefixe couvre les
-    # variantes d'entrainement (ART_ICLABEL, ART_ICLABEL_Ameliore, ...) sans toucher au code.
+    # variantes d'entrainement (ART_ICLABEL, ART_ICLABEL_v2, ...) sans toucher au code.
     cle = (mode, sujet_id, epoch_num)
     if cle in _CACHE:
         return _CACHE[cle]

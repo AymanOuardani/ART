@@ -32,7 +32,7 @@ Data_Dir = Rapport_Tex.parent / "data"
 
 #Signal de référence : l'ICA ICLabel appliquée au signal continu à 64 canaux (ICLABEL_Brut.py).
 #C'est la cible d'entraînement d'ART (cf. Train_ART.py) et le seul ICLabel du rapport.
-Reference = "ICLABEL_Amélioré.fif"
+Reference = "ICLABEL.fif"
 N_EPOCHS = 60
 
 #Paramètres CSP + LDA : strictement ceux d'Evaluation.py (runs 4/8/12, main gauche vs main droite)
