@@ -81,13 +81,20 @@ def clean_epoch(epoch, mode, sujet_id=None, epoch_num=None):
     return decoded * std + avg
 
 
-def sauve_feuille_loso(fichier, sujet, rmse_train, rmse_val, pertes_batches):
+def sauve_feuille_loso(fichier, sujet, rmse_train, rmse_val, pertes_batches,
+                       rmse_identite_val=None, rmse_identite_test=None):
     # Ecrit/actualise une feuille (nom = sujet exclu) dans un classeur Excel :
     #   - epoch_train_rmse / epoch_val_rmse : evolution globale en µV (1 valeur par epoch)
+    #   - rmse_identite_val / rmse_identite_test : baseline "recopier l'entree" (1 seule
+    #     valeur, constante pour le sujet), point de comparaison des deux colonnes ci-dessus
     #   - batch_epoch_N : evolution locale des pertes batch au sein de l'epoch N
     # NB : noms distincts des anciennes colonnes epoch_train_mse/epoch_eval_mse, qui
     # contenaient un MSE sur signal normalise (sans unite) : les deux ne se melangent pas.
     colonnes = {"epoch_train_rmse": rmse_train, "epoch_val_rmse": rmse_val}
+    if rmse_identite_val is not None:
+        colonnes["rmse_identite_val"] = [rmse_identite_val]
+    if rmse_identite_test is not None:
+        colonnes["rmse_identite_test"] = [rmse_identite_test]
     for i, pertes in enumerate(pertes_batches):
         colonnes[f"batch_epoch_{i + 1}"] = pertes
     feuille = pd.DataFrame({nom: pd.Series(vals) for nom, vals in colonnes.items()})
