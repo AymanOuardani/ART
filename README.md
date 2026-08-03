@@ -30,8 +30,8 @@ toutes les comparaisons (RMSE, SNR, accuracy).
 **1. Cloner le dépôt**
 
 ```bash
-git clone https://github.com/AymanOuardani/ART-ICUNET.git
-cd ART-ICUNET
+git clone https://github.com/AymanOuardani/ART.git
+cd ART
 ```
 
 **2. Télécharger les données et les poids** (trop volumineux pour git) depuis Google Drive,
@@ -43,7 +43,7 @@ puis **placer les deux dossiers à la racine du projet** :
 Arborescence attendue :
 
 ```
-ART-ICUNET/
+ART/
 ├── Databases/
 │   ├── EEGBCI/            # signal continu brut, 1 fichier -raw.fif par sujet
 │   ├── EEGBCI_ICLABEL/    # même signal nettoyé par ICLabel (produit par ICLABEL.py)
