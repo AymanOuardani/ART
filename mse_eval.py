@@ -13,7 +13,7 @@ Rapport_Tex = pl.Path(r"C:\Users\aymen\Desktop\ART\Résultats\Rapport_ART.tex")
 #Libellé de chaque comparaison dans le tableau du rapport (Résultats/Rapport_ART.pdf)
 #ICLabel est toujours la référence (repos retiré, mêmes essais gauche/droite)
 labels_rapport = {"ART": "ART", "ICUNet": "ICUNet", "ICUNet++": "ICUNet++", "ICUNet_attn": "ICUNet\\_attn",
-                  "DuoCL": "DuoCL", "GCTNet": "GCTNet", "ICA": "ICA"}
+                  "DuoCL": "DuoCL", "GCTNet": "GCTNet"}
 
 #Ligne de commande : quel signal comparer à ICLabel (+ numéro du sujet)
 parser = ap.ArgumentParser(description="MSE entre un signal nettoyé et le signal nettoyé par ICLabel")

@@ -27,10 +27,10 @@ labels_rapport = {"brut": "Brut",
                   "ICUNet_attn": "ICUNet\\_attn",
                   "DuoCL": "DuoCL",
                   "GCTNet": "GCTNet",
-                  "ICLABEL": "ICLabel",
-                  "ICA": "ICA"}
+                  "ICLABEL": "ICLabel"}
 
-#Nom de fichier selon le signal (brut = prétraité, sans débruitage)
+#Nom de fichier selon le signal. Tous viennent de Prétraité, y compris le brut : le repos T0
+#est retiré plus bas, donc toutes les méthodes portent sur exactement les mêmes essais.
 fichiers = {"brut": None,
             "ART": "ART.fif",
             "ICUNet": "ICUNet.fif",
@@ -38,8 +38,7 @@ fichiers = {"brut": None,
             "ICUNet_attn": "ICUNet_attn.fif",
             "DuoCL": "DuoCL.fif",
             "GCTNet": "GCTNet.fif",
-            "ICLABEL": "ICLABEL.fif",   # ICLabel = ICA ICLabel sur le raw 64 canaux (ICLABEL_Brut.py)
-            "ICA": "ICA.fif"}   # tous viennent de Prétraité : le repos T0 est retiré plus bas
+            "ICLABEL": "ICLABEL.fif"}   # ICA ICLabel sur le raw 64 canaux (ICLABEL_Brut.py)
 
 #Paramètres CSP + LDA (identiques à la référence MNE)
 sfreq = 256
@@ -69,7 +68,7 @@ def prep(X):
 
 
 #CSP + LDA (régularisation pour ICA/ICLabel : données rang-déficientes après retrait de composantes)
-reg = "ledoit_wolf" if args.Method in ("ICLABEL", "ICA") else None
+reg = "ledoit_wolf" if args.Method == "ICLABEL" else None
 clf = Pipeline([("CSP", CSP(n_components=4, reg=reg, log=True, norm_trace=False)),
                 ("LDA", LinearDiscriminantAnalysis())])
 cv = ShuffleSplit(N_iter, test_size=0.2, random_state=42)

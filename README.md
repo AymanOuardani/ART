@@ -2,7 +2,7 @@
 
 Pipeline pour **débruiter** des signaux EEG d'imagerie motrice (base **EEGBCI**, imagerie
 main gauche vs main droite, runs 4/8/12) avec plusieurs modèles de débruitage
-(**ART, IC-U-Net, DuoCL, GCTNet, ICA/ICLabel**), puis **évaluer** l'effet du débruitage sur
+(**ART, IC-U-Net, DuoCL, GCTNet, ICLabel**), puis **évaluer** l'effet du débruitage sur
 le décodage gauche / droite (**CSP + LDA**). Les débruiteurs mono-canal sont entraînés sur
 **EEGdenoiseNet**, ART est réentraîné en *leave-one-subject-out* sur EEGBCI.
 
@@ -47,7 +47,7 @@ ART/
 ├── Databases/
 │   ├── EEGBCI/            # signal continu brut, 1 fichier -raw.fif par sujet
 │   ├── EEGBCI_ICLABEL/    # même signal nettoyé par ICLabel (produit par ICLABEL_Brut.py)
-│   └── EEGdenoiseNet/     # pour Training_Model.py
+│   └── EEGdenoiseNet/     # pour Training_DuoGCT.py
 ├── Model/                 # architectures + poids .pth.tar
 ├── Output/                # créé automatiquement par les scripts
 └── Résultats/             # rapport LaTeX (hors dépôt)
@@ -60,7 +60,7 @@ pip install numpy scipy pandas scikit-learn mne mne-icalabel matplotlib tqdm ein
 ```
 
 > `openpyxl` est requis pour `resultats_LOSO.xlsx` (entraînement d'ART), `odfpy` pour
-> `resultats_accuracy.ods` (`Training_Model.py`).
+> `resultats_accuracy.ods` (`Training_DuoGCT.py`).
 
 > **GPU** (fortement conseillé pour l'entraînement) : installer la build CUDA de PyTorch
 > depuis <https://pytorch.org> à la place de `torch`.
@@ -84,7 +84,6 @@ python Pretraitement.py 1 --iclabel  # ICLabel  -> Output/Nettoyé/S001/ICLABEL.
 python Clean_Model.py ART          # tous les sujets par défaut
 python Clean_Model.py DuoCL 1-10   # sujets 1 à 10 seulement
 python Clean_Model.py GCTNet --force
-python ICA.py 1                    # ICA manuelle (sélection des composantes à l'œil)
 
 # 4. Évaluation CSP + LDA (gauche vs droite)
 python Evaluation.py brut 1        # un sujet, et met à jour le rapport
@@ -103,7 +102,7 @@ mêmes essais.
 ### Modèles disponibles
 
 `Clean_Model.py` : `ART` · `ART_ICLABEL` · `ICUNet` · `ICUNet++` · `ICUNet_attn` · `DuoCL` ·
-`GCTNet`. `Evaluation.py` accepte les mêmes, plus `brut`, `ICLABEL` et `ICA`.
+`GCTNet`. `Evaluation.py` accepte les mêmes, plus `brut` et `ICLABEL`.
 
 | Modèle | Description |
 |--------|--------------|
@@ -111,7 +110,7 @@ mêmes essais.
 | `ART_ICLABEL` | ART réentraîné en LOSO contre ICLabel — nécessite un numéro d'epoch |
 | `ICUNet` / `ICUNet++` / `ICUNet_attn` | familles IC-U-Net |
 | `DuoCL` / `GCTNet` | débruiteurs mono-canal (EEGdenoiseNet) |
-| `ICLABEL` / `ICA` | ICA automatique (la référence) et ICA manuelle |
+| `ICLABEL` | la référence (cf. plus haut) |
 
 ---
 
@@ -119,8 +118,8 @@ mêmes essais.
 
 ```bash
 python Train_ART.py                          # ART neuf, LOSO, cible = ICLabel
-python Training_Model.py DuoCL --device gpu
-python Training_Model.py all --device cpu    # DuoCL + GCTNet
+python Training_DuoGCT.py DuoCL --device gpu
+python Training_DuoGCT.py all --device cpu    # DuoCL + GCTNet
 ```
 
 - **`Train_ART.py`** : pas d'argument, hyperparamètres fixes (60 epochs, batch 32, lr 0.01,
@@ -130,7 +129,7 @@ python Training_Model.py all --device cpu    # DuoCL + GCTNet
   `Model/ART_ICLABEL/modelsave/SXXX/Epoch_NY/`, plus les courbes dans `resultats_LOSO.xlsx`.
   > **Attention** : aucune reprise. Le relancer réentraîne tout depuis le début et **écrase**
   > les checkpoints existants avec des poids différents.
-- **`Training_Model.py`** (DuoCL/GCTNet, sur EEGdenoiseNet) : `DuoCL` · `GCTNet` · `all`.
+- **`Training_DuoGCT.py`** (DuoCL/GCTNet, sur EEGdenoiseNet) : `DuoCL` · `GCTNet` · `all`.
   Options : `--device {auto,cpu,gpu}` · `--gpu N` · `--noise {EOG,EMG,Hybrid}` ·
   `--epochs N` · `--batch_size N`.
 
@@ -181,10 +180,9 @@ python RMS.py 1                    # RMS de chaque méthode (idem RMSE.py, SNR.p
 |--------|------|
 | `ICLABEL_Brut.py` | ICA + tri ICLabel sur le signal continu 64 canaux → `Databases/EEGBCI_ICLABEL/` |
 | `Pretraitement.py` | signal continu → format ART (30 canaux, 256 Hz, essais de 4 s) ; `--iclabel` pour la version nettoyée |
-| `ICA.py` | ICA (infomax) + sélection manuelle des composantes à retirer |
 | `Clean_Model.py` | applique **un** modèle de débruitage → cache dans `Output/Nettoyé/` |
 | `Train_ART.py` | entraîne un ART neuf en LOSO sur EEGBCI |
-| `Training_Model.py` | entraîne DuoCL/GCTNet sur EEGdenoiseNet |
+| `Training_DuoGCT.py` | entraîne DuoCL/GCTNet sur EEGdenoiseNet |
 | `Evaluation.py` | décodage gauche/droite **CSP + LDA** |
 | `Rapport_Sujets.py` | régénère les pages du rapport pour une plage de sujets |
 | `ART_Epochs.py` · `Recap_ART.py` · `mse_eval.py` · `mse_graph.py` | briques du rapport |
@@ -193,5 +191,5 @@ python RMS.py 1                    # RMS de chaque méthode (idem RMSE.py, SNR.p
 | `Visualize.py` | inspection des signaux (brut / prétraité / débruité) |
 | `Utils.py` | chargement d'un modèle, débruitage d'un essai, écriture du rapport |
 
-> Ordre logique : `ICLABEL_Brut` → `Pretraitement` → `Train_ART` / `Training_Model` →
+> Ordre logique : `ICLABEL_Brut` → `Pretraitement` → `Train_ART` / `Training_DuoGCT` →
 > `Clean_Model` → `Evaluation` / `Rapport_Sujets`.

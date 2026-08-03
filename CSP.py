@@ -20,8 +20,7 @@ fichiers = {"brut": None,
             "ICUNet_attn": "ICUNet_attn.fif",
             "DuoCL": "DuoCL.fif",
             "GCTNet": "GCTNet.fif",
-            "ICLABEL": "ICLABEL.fif",   # ICLabel = ICA sur le raw 64 canaux
-            "ICA": "ICA.fif"}
+            "ICLABEL": "ICLABEL.fif"}   # ICLabel = ICA sur le raw 64 canaux
 
 #Paramètres CSP identiques à Evaluation.py (imagerie main gauche vs main droite, runs 4/8/12)
 sfreq = 256
@@ -69,7 +68,7 @@ def lit_epochs(signal, epoch_num):
 
 def patterns(epochs, signal):
     # Ajustement de la CSP (régularisation pour ICA/ICLabel : données rang-déficientes)
-    reg = "ledoit_wolf" if signal in ("ICLABEL", "ICA") else None
+    reg = "ledoit_wolf" if signal == "ICLABEL" else None
     csp = CSP(n_components=n_components, reg=reg, log=True, norm_trace=False)
     csp.fit(prep(epochs.get_data()), epochs.events[:, 2])
     return csp.patterns_[:n_components]
