@@ -17,6 +17,7 @@ Rapport_Tex = pl.Path(r"C:\Users\aymen\Desktop\ART\Résultats\Rapport_ART.tex")
 
 Pretraite = Output / "Prétraité"
 Nettoye = Output / "Nettoyé"
+ART_Epochs = Output / "ART"     # sorties d'un checkpoint LOSO précis (cf. ART_Epochs.py)
 classe1, classe2 = "gauche", "droite"   # imagerie main gauche / main droite (runs 4/8/12)
 
 #Libellé de chaque signal dans le tableau du rapport (Résultats/Rapport_ART.pdf)
@@ -46,10 +47,13 @@ fmin, fmax = 7, 30
 crop = slice(int(round(2.95 * sfreq)), int(round(3.95 * sfreq)))   # fenêtre [1,2]s (+ retard FIR ~1.95s)
 N_iter = 10
 
-#Ligne de commande : jeu de runs, quel signal évaluer (+ sujet optionnel, sinon tous : 1-109)
+#Ligne de commande : quel signal évaluer (+ sujet optionnel, sinon tous : 1-109, et epoch
+#optionnel pour un checkpoint LOSO précis, comme CSP.py et Visualize.py)
 parser = ap.ArgumentParser(description="Évaluation CSP + LDA")
 parser.add_argument("Method", help="signal à évaluer (insensible à la casse) : " + ", ".join(fichiers))
 parser.add_argument("Sujet", type=int, nargs="?", default=None, help="numéro du sujet (défaut : tous, 1-109)")
+parser.add_argument("Epoch", type=int, nargs="?", default=None,
+                    help="numéro d'epoch (ART uniquement, ex. 1) -> Output/ART/SXXX/ART_epochN.fif")
 parser.add_argument("--sans-latex", action="store_true",
                     help="met à jour les données du rapport sans lancer pdflatex (traitement en série)")
 args = parser.parse_args()
@@ -59,6 +63,10 @@ correspondance = {nom.lower(): nom for nom in fichiers}
 if args.Method.lower() not in correspondance:
     raise SystemExit(f"ERREUR : signal inconnu '{args.Method}'. Choix possibles : {', '.join(fichiers)}")
 args.Method = correspondance[args.Method.lower()]
+
+if args.Epoch is not None and (args.Method != "ART" or args.Sujet is None):
+    raise SystemExit("ERREUR : l'argument Epoch n'est utilisable qu'avec ART et un sujet précis, "
+                     "ex. python Evaluation.py ART 4 1")
 
 
 def prep(X):
@@ -80,6 +88,8 @@ for s in sujets:
     sujet_id = "S" + str(s).zfill(3)
     if args.Method == "brut":
         fichier = Pretraite / (sujet_id + "_Pre.fif")
+    elif args.Epoch is not None:
+        fichier = ART_Epochs / sujet_id / f"ART_epoch{args.Epoch}.fif"
     else:
         fichier = Nettoye / sujet_id / fichiers[args.Method]
     if not fichier.exists():
@@ -96,8 +106,10 @@ for s in sujets:
 if len(moyennes) > 1:
     print(f"\nMoyenne finale ({args.Method}) : {np.mean(moyennes):.3f} +/- {np.std(moyennes):.3f}")
 
-#Sujet unique évalué avec succès -> reporte la valeur dans Résultats/Rapport_ART.pdf
-if args.Sujet and moyennes and Rapport_Tex.exists():
+#Sujet unique évalué avec succès -> reporte la valeur dans Résultats/Rapport_ART.pdf.
+#Pas avec un numéro d'epoch : la ligne « ART » du rapport est celle du modèle d'origine, et
+#les résultats par epoch sont du ressort d'ART_Epochs.py.
+if args.Sujet and args.Epoch is None and moyennes and Rapport_Tex.exists():
     sujet_id = "S" + str(args.Sujet).zfill(3)
     ligne = f"{labels_rapport[args.Method]} & {moyennes[0]:.2f} $\\pm$ {ecarts[0]:.2f} \\\\"
     Utils.maj_tableau_tex(Rapport_Tex.parent / "data" / f"{sujet_id}_accuracy.json",

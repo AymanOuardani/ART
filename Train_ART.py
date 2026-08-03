@@ -140,10 +140,15 @@ for sujet_test in ordre:
 
     model = tf_model.make_model(30, 30, N=2).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
+    #Décroissance cosinus du pas sur les n_epochs : à lr constant, les poids de fin d'epoch
+    #sautent trop loin d'une epoch à l'autre et la courbe de validation zigzague sans
+    #descendre. En réduisant progressivement le pas, les dernières epochs affinent au lieu
+    #d'osciller, et la meilleure epoch cesse d'être un tirage au sort.
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_epochs)
 
     rmse_train_par_epoch, rmse_val_par_epoch, pertes_batches = [], [], []
     for ep in range(n_epochs):
-        print("Sujet", sujet_test, "- Epoch", ep + 1)
+        print("Sujet", sujet_test, "- Epoch", ep + 1, f"- lr {opt.param_groups[0]['lr']:.2e}")
 
         #entraînement de l'epoch
         model.train()
@@ -188,6 +193,7 @@ for sujet_test in ordre:
         #crash, on ne perd que l'epoch en cours, pas les 60 epochs déjà entraînées
         Utils.sauve_feuille_loso(Fichier_Excel, sujet_test, rmse_train_par_epoch, rmse_val_par_epoch,
                                  pertes_batches, rmse_id_val, rmse_id_test)
+        sched.step()   # après les pas de l'epoch : le pas décroît pour l'epoch suivante
 
     #test final sur le sujet exclu, avec le checkpoint de la meilleure epoch de validation
     #(et non le modèle de la dernière epoch, qui a pu surapprendre entre-temps)
