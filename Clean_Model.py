@@ -1,10 +1,12 @@
 """
-Applique un modèle de débruitage aux essais prétraités d'un ou plusieurs sujets, et enregistre
-le résultat dans Output/Nettoyé/SXXX/. Le fichier existant est toujours remplacé.
+Applique un modèle de débruitage aux essais prétraités d'un sujet, et enregistre le résultat
+dans Output/Nettoyé/SXXX/. Le fichier existant est toujours remplacé.
 
-  python Clean_Model.py ART                 tous les sujets
-  python Clean_Model.py DuoCL 1-10          sujets 1 à 10
-  python Clean_Model.py ART_ICLABEL 1 40    ART réentraîné, checkpoint de l'epoch 40 pour sujet 1
+  python Clean_Model.py ART_Orig            les 109 sujets
+  python Clean_Model.py ART_Orig 1          sujet 1
+  python Clean_Model.py DuoCL 5
+  python Clean_Model.py ART_Local 1 40      sujet 1, checkpoint de l'epoch 40
+  python Clean_Model.py ART_Local tout 40   les 109 sujets à l'epoch 40
 
 """
 
@@ -20,7 +22,6 @@ from Model.GCTNet import Generator
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-#Toujours Prétraité (3 classes, repos inclus) : comparable à ICA/ICLabel
 Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
 Model_Dir = pl.Path(r"C:\Users\aymen\Desktop\ART\Model")
 Pretraite = Output / "Prétraité"
@@ -28,112 +29,100 @@ Nettoye = Output / "Nettoyé"
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-WIN = 512   # fenêtre des modèles mono-canal (EEGdenoiseNet)
+Win = 512   # fenêtre des modèles mono-canal (EEGdenoiseNet)
 
-#Modèles de débruitage disponibles (on nettoie toujours EEGBCI)
-#  multi  : réseau 30->30 canaux, appliqué via Utils.clean_epoch
-#  single : réseau mono-canal DuoCL/GCTNet, appliqué canal par canal
-#  ART_ICLABEL : ART entraîné en LOSO contre ICLabel (un checkpoint par sujet exclu
-#  et par epoch, cf. --epoch) ; sortie dans ART.fif comme ART
-MODELES = {
-    "ICUNet":      {"kind": "multi",  "mode": "ICUNet"},
-    "ICUNet++":    {"kind": "multi",  "mode": "ICUNet++"},
-    "ICUNet_attn": {"kind": "multi",  "mode": "ICUNet_attn"},
-    "ART":         {"kind": "multi",  "mode": "ART"},
-    "ART_ICLABEL": {"kind": "multi",  "mode": "ART_ICLABEL", "sortie": "ART"},
-    "DuoCL":       {"kind": "single", "arch": "DuoCL",  "dossier": "DuoCL"},
-    "GCTNet":      {"kind": "single", "arch": "GCTNet", "dossier": "GCTNet"},
-}
+#Modèles disponibles. DuoCL et GCTNet sont mono-canal et s'appliquent canal par canal,
+#les autres traitent les 30 canaux d'un coup.
+#ART_Local a un checkpoint par sujet et par epoch, d'où le numéro d'epoch.
+Modeles = ["ART_Orig", "ART_Local", "ICUNet", "ICUNet++", "ICUNet_attn", "DuoCL", "GCTNet"]
+Mono_canal = ["DuoCL", "GCTNet"]
 
 #Ligne de commande
 parser = ap.ArgumentParser(description="Débruitage EEGBCI")
-parser.add_argument("Modele", choices=list(MODELES), help="modèle de débruitage")
-parser.add_argument("Sujets", nargs="?", default="1-109", help="ex. 1-109 ou 1,2,5 (défaut : 1-109)")
+parser.add_argument("Modele", choices=Modeles, help="modèle de débruitage")
+parser.add_argument("Sujet", nargs="?", default="tout",
+                    help="numéro du sujet, ou tout pour les 109 (défaut : tout)")
 parser.add_argument("Epoch", type=int, nargs="?", default=None,
-                    help="numéro d'epoch du checkpoint LOSO (requis pour ART_ICLABEL, ex. 40)")
+                    help="numéro d'epoch (requis pour ART_Local, ex. 40)")
 args = parser.parse_args()
-entry = MODELES[args.Modele]
+sujets = range(1, 110) if args.Sujet == "tout" else [int(args.Sujet)]
 
-if args.Modele == "ART_ICLABEL" and args.Epoch is None:
-    raise SystemExit("ERREUR : ART_ICLABEL nécessite un numéro d'epoch, ex. "
-                     "python Clean_Model.py ART_ICLABEL 1 40")
-
-#"1-109" ou "1,2,5" -> liste de sujets
-if "-" in args.Sujets:
-    a, b = args.Sujets.split("-")
-    sujets = list(range(int(a), int(b) + 1))
-else:
-    sujets = [int(s) for s in args.Sujets.split(",")]
+if args.Modele == "ART_Local" and args.Epoch is None:
+    raise SystemExit("ERREUR : ART_Local nécessite un numéro d'epoch, ex. "
+                     "python Clean_Model.py ART_Local 1 40")
 
 
-def charge_modele_mono(entry):
-    # Construit le réseau mono-canal et charge ses poids (BEST de préférence)
-    dossier = Model_Dir / entry["dossier"] / "modelsave"
+def charge_modele_mono():
+    #Réseau mono-canal, poids BEST de préférence
+    dossier = Model_Dir / args.Modele / "modelsave"
     ckpt = dossier / "BEST_checkpoint.pth.tar"
     if not ckpt.exists():
         ckpt = dossier / "checkpoint.pth.tar"
     state = torch.load(ckpt, map_location=device, weights_only=False)["state_dict"]
-    model = DuoCL(WIN) if entry["arch"] == "DuoCL" else Generator(WIN)
+    model = DuoCL(Win) if args.Modele == "DuoCL" else Generator(Win)
     model.load_state_dict(state)
     return model.to(device).eval()
 
 
 def fenetres(total):
-    # Début de chaque fenêtre de WIN points couvrant [0, total[ (dernière ancrée à la fin)
-    debuts = list(range(0, total, WIN))
-    if debuts[-1] + WIN > total:
-        debuts[-1] = max(0, total - WIN)
+    #Débuts des fenêtres, la dernière ancrée à la fin
+    debuts = list(range(0, total, Win))
+    if debuts[-1] + Win > total:
+        debuts[-1] = max(0, total - Win)
     return debuts
 
 
 def debruite_epoch_mono(epoch, model):
-    # epoch (30, T) -> (30, T), canal par canal, fenêtres de WIN=512 (z-score par fenêtre)
+    #Canal par canal, par fenêtres de 512 points z-scorées
     C, T = epoch.shape
     segs, meta = [], []
     for ch in range(C):
         for st in fenetres(T):
-            seg = epoch[ch, st:st + WIN]
+            seg = epoch[ch, st:st + Win]
             m, s = seg.mean(), seg.std()
             s = s if s > 1e-12 else 1.0
             segs.append(((seg - m) / s).astype(np.float32))
             meta.append((ch, st, m, s))
-    x = torch.from_numpy(np.stack(segs)).to(device).unsqueeze(1)     # (N, 1, WIN)
+    x = torch.from_numpy(np.stack(segs)).to(device).unsqueeze(1)     # (N, 1, Win)
     with torch.no_grad():
         p = model(x).view(x.shape[0], -1)
     p = p.cpu().numpy()
     sortie = np.array(epoch, copy=True)
     for k, (ch, st, m, s) in enumerate(meta):
-        sortie[ch, st:st + WIN] = p[k] * s + m
+        sortie[ch, st:st + Win] = p[k] * s + m
     return sortie
 
 
-#Chargement du modèle mono-canal si nécessaire (les modèles multi passent par Utils)
-model_obj = charge_modele_mono(entry) if entry["kind"] == "single" else None
+#Modèle mono-canal si besoin, les autres passent par Utils
+mono = args.Modele in Mono_canal
+model_obj = charge_modele_mono() if mono else None
 
-#Débruitage sujet par sujet : le fichier de sortie est toujours réécrit
-n_ok = n_absent = 0
 for s in sujets:
     sujet_id = "S" + str(s).zfill(3)
-    out = Nettoye / sujet_id / (entry.get("sortie", args.Modele) + ".fif")
+
+    #Lecture des essais prétraités du sujet
     fif_initial = Pretraite / (sujet_id + "_Pre.fif")
     if not fif_initial.exists():
-        n_absent += 1
+        print(f"{sujet_id} : fichier introuvable ({fif_initial})")
         continue
-
     epochs = mne.read_epochs(fif_initial, preload=True)
+
+    #Débruitage essai par essai
     data = epochs.get_data()
     data_clean = np.empty_like(data)
     for i, epoch in enumerate(data):
-        if entry["kind"] == "multi":
-            data_clean[i] = Utils.clean_epoch(epoch, entry["mode"], sujet_id, args.Epoch)
-        else:
+        if mono:
             data_clean[i] = debruite_epoch_mono(epoch, model_obj)
+        else:
+            data_clean[i] = Utils.clean_epoch(epoch, args.Modele, sujet_id, args.Epoch)
 
-    epochs_clean = mne.EpochsArray(data_clean, epochs.info, epochs.events,
-                                   tmin=epochs.tmin, event_id=epochs.event_id)
+    #Sauvegarde, la sortie est toujours réécrite
+    out = Nettoye / sujet_id / (args.Modele + ".fif")
     out.parent.mkdir(parents=True, exist_ok=True)
-    epochs_clean.save(out, overwrite=True)
-    n_ok += 1
-    print("Sujet", s, "-> ", out.name)
+    mne.EpochsArray(data_clean, epochs.info, epochs.events,
+                    tmin=epochs.tmin, event_id=epochs.event_id).save(out, overwrite=True)
+    print(f"{sujet_id} : {len(data)} essais débruités -> {out}", flush=True)
 
-print(f"\nTerminé : {n_ok} débruités, {n_absent} sans prétraité.")
+    #ART_Local charge un modèle par sujet, inutile de tous les garder en mémoire
+    if args.Modele == "ART_Local":
+        Utils._cache.clear()

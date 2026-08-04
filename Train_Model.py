@@ -1,21 +1,16 @@
 """
-Entraînement des débruiteurs.
+Entraînement des modèles.
 
-  python Train_Model.py ART        transformer ART, leave-one-subject-out sur EEGBCI
-  python Train_Model.py DuoCL      DuoCL sur EEGdenoiseNet
-  python Train_Model.py GCTNet     GCTNet sur EEGdenoiseNet
-  python Train_Model.py all        DuoCL puis GCTNet
+  python Train_Model.py ART_Local
+  python Train_Model.py DuoCL
+  python Train_Model.py GCTNet
+  python Train_Model.py all
 
-Options communes : --device {auto,cpu,gpu} · --gpu N · --epochs N · --batch_size N
-Options EEGdenoiseNet (DuoCL / GCTNet) : --noise {EOG,EMG,Hybrid}
-Options ART : --sujets S004,S007 pour ne relancer qu'une partie des folds,
-              --baseline pour n'afficher que la baseline identité sans entraîner.
-
-ART apprend à reproduire ICLabel : entrée = Output/Prétraité/SXXX_Pre.fif (signal bruité),
-cible = Output/Nettoyé/SXXX/ICLABEL.fif. DuoCL et GCTNet apprennent sur EEGdenoiseNet, où
-le signal propre et le bruit sont mélangés à un SNR contrôlé.
-
-ATTENTION : relancer ART réécrit tous les checkpoints déjà présents dans Model/ART_ICLABEL.
+- ART_Local apprend à reproduire ICLabel : entrée = Output/Prétraité/SXXX_Pre.fif,
+cible = Output/Nettoyé/SXXX/ICLABEL.fif. Les courbes vont dans
+Output/Train_ART_Local.xlsx, une feuille par sujet.
+- DuoCL et GCTNet apprennent sur EEGdenoiseNet, leurs courbes vont dans
+Output/Train_DuoGCT.xlsx, une feuille par modèle et par bruit.
 """
 
 import argparse as ap
@@ -44,111 +39,72 @@ Model_Dir = Racine / "Model"
 Pretraite = Racine / "Output" / "Prétraité"        # ART : entrée bruitée
 Nettoye = Racine / "Output" / "Nettoyé"            # ART : cible propre
 Cible = "ICLABEL.fif"
-Sortie_ART = Model_Dir / "ART_ICLABEL" / "modelsave"
-Excel_ART = Model_Dir / "ART_ICLABEL" / "resultats_LOSO.xlsx"
+Sortie_ART = Model_Dir / "ART_Local" / "modelsave"
+Excel_ART = Racine / "Output" / "Train_ART_Local.xlsx"
 Data_Dir = Racine / "Databases" / "EEGdenoiseNet" / "data"
-Out_Ods = Racine / "resultats_accuracy.ods"
+Excel_DuoGCT = Racine / "Output" / "Train_DuoGCT.xlsx"
 
-#Hyperparamètres d'ART, alignés sur l'entraînement d'origine (Model/ART/modelsave/
-#model_trainValLog.txt) : pas de départ 2,3e-3 décroissant en 1/racine(epoch), soit 2,3e-3
-#à la première epoch et 3e-4 à la soixantième.
+#Hyperparamètres d'ART, repris de l'entraînement d'origine
 art_n_epochs = 60
 art_batch_size = 32
 art_lr = 0.0023
 part_train = 0.8   # part des 108 autres sujets pour l'entraînement (86), le reste en validation (22)
 graine = 42        # split train/validation identique d'une exécution à l'autre
 
-#Pondérations des pertes adverses de GCTNet (loss_type "feature+cls", GCTNet-main/train.py)
-W_FEATURE = 0.05
-W_CLS = 0.05
+#Sujets à traiter : None = tous, ou une liste
+sujets_a_traiter = None
 
-#Config par modèle EEGdenoiseNet : dossier de poids + valeurs par défaut
-MODELES = {
+#Bruit ajouté : EOG, EMG ou Hybrid
+bruit = "Hybrid"
+
+#Pondérations des pertes adverses de GCTNet
+W_feature = 0.05
+W_cls = 0.05
+
+#Dossier de poids et réglages de chaque modèle
+Modeles = {
     "DuoCL":  {"dossier": "DuoCL",  "epochs": 100, "batch": 128},
     "GCTNet": {"dossier": "GCTNet", "epochs": 100, "batch": 128},
 }
 
 #Ligne de commande
-parser = ap.ArgumentParser(description="Entraînement des débruiteurs (ART, DuoCL, GCTNet)",
-                           formatter_class=ap.RawDescriptionHelpFormatter, epilog=__doc__)
-parser.add_argument("Modele", choices=["ART", "DuoCL", "GCTNet", "all"],
+parser = ap.ArgumentParser(description="Entraînement des débruiteurs (ART, DuoCL, GCTNet)")
+parser.add_argument("Modele", choices=["ART_Local", "DuoCL", "GCTNet", "all"],
                     help="modèle à entraîner ('all' = DuoCL + GCTNet)")
-parser.add_argument("--device", choices=["auto", "cpu", "gpu"], default="auto",
-                    dest="device_mode", help="périphérique (défaut : auto)")
-parser.add_argument("--gpu", type=int, default=0, help="index du GPU CUDA (si device gpu/auto)")
-parser.add_argument("--noise", choices=["EOG", "EMG", "Hybrid"], default="Hybrid",
-                    help="bruit ajouté (DuoCL / GCTNet)")
-parser.add_argument("--epochs", type=int, default=None, help="nb d'epochs (défaut par modèle)")
-parser.add_argument("--batch_size", type=int, default=None, help="taille de batch (défaut par modèle)")
-parser.add_argument("--sujets", default=None,
-                    help="ART : liste de folds à traiter, ex. S004,S007 (défaut : tous)")
-parser.add_argument("--baseline", action="store_true",
-                    help="ART : affiche seulement les baselines identité, sans entraîner")
 args = parser.parse_args()
 
-#Sélection du périphérique (--device auto|cpu|gpu)
-if args.device_mode == "cpu":
-    device = torch.device("cpu")
-    print("Périphérique : CPU (forcé)")
-elif args.device_mode == "gpu":
-    if not torch.cuda.is_available():
-        raise SystemExit("ERREUR : aucun GPU CUDA disponible alors que --device gpu est demandé.")
-    device = torch.device(f"cuda:{args.gpu}")
-    torch.cuda.set_device(args.gpu)
-    print(f"Périphérique : GPU {args.gpu} ({torch.cuda.get_device_name(args.gpu)}) (forcé)")
-elif torch.cuda.is_available():
-    device = torch.device(f"cuda:{args.gpu}")
-    torch.cuda.set_device(args.gpu)
-    print(f"Périphérique : auto -> GPU {args.gpu} ({torch.cuda.get_device_name(args.gpu)})")
+#GPU s'il y en a un, sinon CPU
+if torch.cuda.is_available():
+    device = torch.device("cuda:0")
+    print("Périphérique : GPU", torch.cuda.get_device_name(0))
 else:
     device = torch.device("cpu")
-    print("Périphérique : auto -> CPU (pas de GPU CUDA)")
+    print("Périphérique : CPU (pas de GPU CUDA)")
 
 
-# =============================== ART (EEGBCI, LOSO) ===============================
+#===================================== ART =====================================
 
 def reconstruit(model, src):
-    # Reconstruction strictement identique à celle de l'inférence (Utils.decode_data) : le
-    # décodeur reçoit le signal BRUITÉ, jamais la cible propre. Si on lui donnait la cible
-    # (teacher forcing), le modèle apprendrait à la recopier — une tâche qu'il ne reverra
-    # jamais au moment de nettoyer, d'où un effondrement des performances en test.
+    #Le décodeur reçoit le signal bruité, jamais la cible : sinon il apprendrait
+    #à la recopier, ce qu'il ne pourra pas faire à l'inférence.
     batch = tf_data.Batch(src, src, pad=0)
     out = model.forward(batch.src, batch.src[:, :, 1:], batch.src_mask, batch.trg_mask)
     return model.generator(out).permute(0, 2, 1)
 
 
 def residu(pred, trg):
-    # Résidu sur le signal normalisé — c'est lui qui alimente le gradient, comme dans
-    # l'entraînement d'origine d'ART. Chaque essai pèse alors le même poids ; en µV, un essai
-    # agité pesait jusqu'à neuf fois plus qu'un essai calme et dictait la descente.
-    # pred fait 1023 points : on le compare aux 1023 premiers points de la cible, comme à
-    # l'inférence où le dernier point est complété séparément.
+    #Résidu normalisé : c'est lui qui alimente le gradient, chaque essai du même poids.
+    #pred fait 1023 points, on le compare aux 1023 premiers de la cible.
     return pred - trg[:, :, :-1]
 
 
 def erreur_uv(res, ecart):
-    # Le même résidu ramené à son échelle d'origine, en µV : sert aux courbes et aux
-    # comparaisons du reste du projet, jamais au gradient.
+    #Le même résidu en µV, pour les courbes seulement
     return res * ecart.view(-1, 1, 1) * 1e6
 
 
-def rmse_identite(X, Y, S, batch_size):
-    # Baseline "identité" : l'erreur qu'on obtiendrait en recopiant simplement l'entrée bruitée.
-    # Même accumulation que la validation, donc directement comparable : un modèle qui ne
-    # descend pas sous ce chiffre n'a rien appris d'utile.
-    somme, n = 0.0, 0
-    with torch.no_grad():
-        for j in range(0, len(X), batch_size):
-            e = erreur_uv(residu(X[j:j + batch_size].to(device)[:, :, :-1],
-                                 Y[j:j + batch_size].to(device)),
-                          S[j:j + batch_size].to(device))
-            somme += float((e ** 2).sum())
-            n += e.numel()
-    return np.sqrt(somme / n)
-
-
 def rmse_modele(model, X, Y, S, batch_size):
-    # RMSE en µV et MSE normalisée du modèle sur un jeu (validation ou sujet exclu)
+    #RMSE en µV et MSE normalisée sur un jeu
     model.eval()
     somme, somme_norm, n = 0.0, 0.0, 0
     with torch.no_grad():
@@ -163,10 +119,10 @@ def rmse_modele(model, X, Y, S, batch_size):
 
 
 def entraine_art():
-    n_epochs = args.epochs if args.epochs is not None else art_n_epochs
-    batch_size = args.batch_size if args.batch_size is not None else art_batch_size
+    n_epochs = art_n_epochs
+    batch_size = art_batch_size
 
-    #1 - Charger les paires par sujet (bruité = Prétraité, propre = Nettoyé/ICLABEL.fif)
+    #Paires de chaque sujet : bruité dans Prétraité, propre dans Nettoyé
     sujets = {}
     for s in range(1, 110):
         sujet_id = "S" + str(s).zfill(3)
@@ -177,8 +133,7 @@ def entraine_art():
         X = mne.read_epochs(f_bruite, preload=True).get_data().astype(np.float32)
         Y = mne.read_epochs(f_propre, preload=True).get_data().astype(np.float32)
 
-        #normalisation par bloc : z-score scalaire du bruité, appliqué aussi à la cible
-        #(l'écart-type est gardé de côté pour redonner des µV dans la loss)
+        #z-score du bruité, appliqué aussi à la cible. L'écart-type est gardé pour les µV.
         S = np.empty(len(X), dtype=np.float32)
         for i in range(len(X)):
             m, ecart = X[i].mean(), X[i].std()
@@ -189,14 +144,11 @@ def entraine_art():
     if not sujets:
         raise SystemExit(f"ERREUR : aucune paire trouvée dans {Pretraite} et {Nettoye}")
 
-    #2 - Leave-one-subject-out : pour chaque sujet exclu, les 108 autres sont séparés en 86
-    #sujets d'entraînement et 22 de validation (aucun sujet des deux côtés, donc la validation
-    #mesure la même chose que le test : la généralisation à un sujet jamais vu). Le sujet exclu
-    #ne sert qu'au test final, avec le checkpoint de la meilleure epoch de validation.
-    #On commence par le sujet 4, puis tous les autres dans l'ordre.
+    #Un modèle par sujet exclu : les 108 autres se partagent en 86 pour l'entraînement et 22
+    #pour la validation. Le sujet exclu ne sert qu'au test final. On commence par le sujet 4.
     ordre = [s for s in ("S004",) if s in sujets] + [s for s in sujets if s != "S004"]
-    if args.sujets:
-        demandes = [s.strip() for s in args.sujets.split(",")]
+    if sujets_a_traiter:
+        demandes = sujets_a_traiter
         ordre = [s for s in ordre if s in demandes]
 
     Sortie_ART.mkdir(parents=True, exist_ok=True)
@@ -204,7 +156,7 @@ def entraine_art():
     for sujet_test in ordre:
         debut = time.time()
 
-        #split au niveau des sujets (et non des essais, sinon un même sujet serait des deux côtés)
+        #Séparation par sujet, jamais par essai
         autres = [s for s in sujets if s != sujet_test]
         melange = np.random.default_rng(graine).permutation(len(autres))
         n_train = int(part_train * len(autres))
@@ -219,20 +171,10 @@ def entraine_art():
         print(f"Sujet {sujet_test} : {len(sujets_tr)} sujets train, "
               f"{len(sujets_val)} sujets validation", flush=True)
 
-        #Point de comparaison, avant tout entraînement : l'erreur d'un "modèle" qui recopierait
-        #son entrée. Tout RMSE au-dessus de ces valeurs signale un apprentissage inutile.
-        rmse_id_val = rmse_identite(X_val, Y_val, S_val, batch_size)
-        rmse_id_test = rmse_identite(X_te, Y_te, S_te, batch_size)
-        print(f"{sujet_test} : RMSE identité val {rmse_id_val:.2f} µV | "
-              f"test {rmse_id_test:.2f} µV", flush=True)
-        if args.baseline:
-            continue
-
         loader = DataLoader(TensorDataset(X_tr, Y_tr, S_tr), batch_size=batch_size, shuffle=True)
         model = tf_model.make_model(30, 30, N=2).to(device)
         opt = torch.optim.Adam(model.parameters(), lr=art_lr, betas=(0.9, 0.98), eps=1e-9)
-        #Décroissance en 1/racine(epoch), exactement celle de l'entraînement d'origine d'ART :
-        #2,3e-3 à la première epoch, 3e-4 à la soixantième.
+        #Décroissance en 1/racine(epoch) : 2,3e-3 à la première, 3e-4 à la soixantième
         sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda ep: 1 / np.sqrt(ep + 1))
 
         rmse_train_par_epoch, rmse_val_par_epoch, pertes_batches = [], [], []
@@ -244,15 +186,14 @@ def entraine_art():
             for i, (src, trg, ecart) in enumerate(loader):
                 src, trg, ecart = src.to(device), trg.to(device), ecart.to(device)
 
-                #La loss est la MSE sur signal normalisé, celle de l'entraînement d'origine :
-                #c'est elle, et elle seule, qui produit le gradient
+                #MSE sur signal normalisé : la seule à produire le gradient
                 res = residu(reconstruit(model, src), trg)
                 perte = torch.mean(res ** 2)
                 opt.zero_grad()
                 perte.backward()
                 opt.step()
 
-                #Le même résidu en µV, seulement pour les courbes et le classeur
+                #Le même résidu en µV, pour les courbes
                 e = erreur_uv(res.detach(), ecart)
                 pertes.append(perte.item())
                 somme += float((e ** 2).sum())
@@ -260,8 +201,7 @@ def entraine_art():
                 n += e.numel()
                 print(f"    batch {i + 1}/{len(loader)} - perte {perte.item():.4f}", flush=True)
             pertes_batches.append(pertes)
-            #RMSE global de l'epoch (somme des carrés puis racine), et non moyenne des RMSE par
-            #batch, qui sous-estimerait et ne serait pas comparable au RMSE de validation
+            #Somme des carrés puis racine, et non moyenne des RMSE par batch
             rmse_train = np.sqrt(somme / n)
             mse_train_norm = somme_norm / n
             rmse_train_par_epoch.append(rmse_train)
@@ -269,49 +209,41 @@ def entraine_art():
             rmse_val, mse_val_norm = rmse_modele(model, X_val, Y_val, S_val, batch_size)
             rmse_val_par_epoch.append(rmse_val)
 
-            #checkpoint de cette epoch : modelsave/SujetXXX/Epoch_NY/checkpoint.pth.tar
+            #Checkpoint de l'epoch
             dossier_epoch = Sortie_ART / sujet_test / f"Epoch_N{ep + 1}"
             dossier_epoch.mkdir(parents=True, exist_ok=True)
             torch.save({"state_dict": model.state_dict(), "epoch": ep + 1, "rmse_val": rmse_val},
                        dossier_epoch / "checkpoint.pth.tar")
 
-            #Excel mis à jour à chaque epoch (pas seulement à la fin du sujet) : en cas de
-            #crash, on ne perd que l'epoch en cours, pas les 60 epochs déjà entraînées
-            Utils.sauve_feuille_loso(Excel_ART, sujet_test, rmse_train_par_epoch,
+            #Excel écrit à chaque epoch : un plantage ne coûte que l'epoch en cours
+            Utils.sauve_feuille(Excel_ART, sujet_test, rmse_train_par_epoch,
                                      rmse_val_par_epoch, pertes_batches)
 
-            #Bilan de l'epoch dans les deux unités : la MSE normalisée est celle qu'optimise
-            #le modèle et se compare directement au journal d'origine (Model/ART/modelsave/
-            #model_trainValLog.txt) ; le RMSE en µV reste la grandeur physique du projet.
+            #Bilan de l'epoch : la MSE est celle qu'optimise le modèle, le RMSE la grandeur physique
             print(f"  {sujet_test} - Epoch {ep + 1}/{n_epochs} : "
                   f"MSE train {mse_train_norm:.4f} | val {mse_val_norm:.4f}   ||   "
-                  f"RMSE train {rmse_train:.2f} µV | val {rmse_val:.2f} µV "
-                  f"| identité {rmse_id_val:.2f} µV", flush=True)
+                  f"RMSE train {rmse_train:.2f} µV | val {rmse_val:.2f} µV", flush=True)
             sched.step()   # après les pas de l'epoch : le pas décroît pour l'epoch suivante
 
-        #test final sur le sujet exclu, avec le checkpoint de la meilleure epoch de validation
-        #(et non le modèle de la dernière epoch, qui a pu surapprendre entre-temps)
+        #Test final avec le checkpoint de la meilleure epoch de validation
         meilleure_epoch = int(np.argmin(rmse_val_par_epoch)) + 1
         ckpt = Sortie_ART / sujet_test / f"Epoch_N{meilleure_epoch}" / "checkpoint.pth.tar"
         model.load_state_dict(torch.load(ckpt, map_location=device)["state_dict"])
 
         rmse_test, mse_test_norm = rmse_modele(model, X_te, Y_te, S_te, batch_size)
         rmses.append(rmse_test)
-        #gain relatif sur la baseline : négatif = le modèle fait pire que recopier l'entrée
-        gain = (rmse_id_test - rmse_test) / rmse_id_test * 100
         print(f"  {sujet_test} : MSE test {mse_test_norm:.4f} | RMSE test {rmse_test:.2f} µV "
-              f"(epoch {meilleure_epoch}) - identité {rmse_id_test:.2f} µV, gain {gain:+.1f} % "
-              f"- {time.time() - debut:.1f}s", flush=True)
+              f"(epoch {meilleure_epoch}) - {time.time() - debut:.1f}s", flush=True)
 
     if rmses:
         print(f"\nRMSE moyen (leave-one-subject-out, test final, µV) : "
               f"{np.mean(rmses):.2f} +/- {np.std(rmses):.2f}")
 
 
-# ========================= DuoCL / GCTNet (EEGdenoiseNet) =========================
+#========================= DuoCL / GCTNet (EEGdenoiseNet) =========================
 
 def tuile(arr, n, graine_bruit):
-    # Mélange (graine fixe) puis réplique le bruit pour obtenir exactement n époques
+    #Mélange (graine fixe) puis réplique le bruit pour obtenir exactement n époques
     rng = np.random.RandomState(graine_bruit)
     arr = arr[rng.permutation(arr.shape[0])]
     reps = int(np.ceil(n / arr.shape[0]))
@@ -319,7 +251,7 @@ def tuile(arr, n, graine_bruit):
 
 
 def charge_donnees(bruit):
-    # Charge les 4514 époques EEG propres + le bruit, aligné sur l'EEG et mélangé (graine fixe)
+    #Charge les 4514 époques EEG propres + le bruit, aligné sur l'EEG et mélangé (graine fixe)
     eeg = np.load(Data_Dir / "EEG_all_epochs.npy").astype(np.float32)
     n = eeg.shape[0]
     if bruit == "EOG":
@@ -337,7 +269,7 @@ def charge_donnees(bruit):
 
 
 def decoupe_donnees(eeg, nos, test_ratio=0.1, val_ratio=0.1):
-    # ~90% train / 10% test (4514 -> 4062/452, façon article), val = 10% du train
+    #~90% train / 10% test (4514 -> 4062/452, façon article), val = 10% du train
     n = eeg.shape[0]
     n_trainfull = int(n * (1 - test_ratio))
     n_val = int(n_trainfull * val_ratio)
@@ -347,7 +279,7 @@ def decoupe_donnees(eeg, nos, test_ratio=0.1, val_ratio=0.1):
 
 
 class EEGAvecBruit:
-    # Génère à la volée des signaux bruités à différents SNR (-5..5 dB), cf. GCTNet-main
+    #Génère à la volée des signaux bruités à différents SNR (-5..5 dB), cf. GCTNet-main
     def __init__(self, eeg_data, nos_data, batch_size=16):
         self.EEG, self.NOS, self.SNR = [], [], []
         for val in 10 ** (0.05 * np.linspace(-5.0, 5.0, num=11)):
@@ -405,29 +337,29 @@ def sauve_ckpt(model, chemin, epoch, val_mse):
     torch.save({"state_dict": model.state_dict(), "epoch": epoch, "val_mse": val_mse}, chemin)
 
 
-def sauve_feuille_mse(nom_feuille, modele, base, train_mses, val_mses, test_mses):
-    # Écrit/actualise une feuille de resultats_accuracy.ods (évolution du MSE par epoch)
-    lignes = [["Modele", modele, "", ""], ["Base", base, "", ""],
-              ["epoch", "train_mse", "val_mse", "test_mse"]]
-    for i in range(len(train_mses)):
-        lignes.append([i + 1, round(train_mses[i], 6), round(val_mses[i], 6), round(test_mses[i], 6)])
-    nouvelle_feuille = pd.DataFrame(lignes)
+def sauve_feuille_mse(nom_feuille, train_mses, val_mses, test_mses):
+    #Une feuille par modèle et par bruit : le MSE des trois jeux, epoch par epoch
+    feuille = pd.DataFrame({"epoch": range(1, len(train_mses) + 1),
+                            "train_mse": np.round(train_mses, 6),
+                            "val_mse": np.round(val_mses, 6),
+                            "test_mse": np.round(test_mses, 6)})
 
     feuilles = {}
-    if Out_Ods.exists():
+    if Excel_DuoGCT.exists():
         try:
-            feuilles = pd.read_excel(Out_Ods, sheet_name=None, engine="odf", header=None)
+            feuilles = pd.read_excel(Excel_DuoGCT, sheet_name=None, engine="openpyxl")
         except Exception:
             feuilles = {}
-    feuilles[nom_feuille[:31]] = nouvelle_feuille
-    with pd.ExcelWriter(Out_Ods, engine="odf") as writer:
+    feuilles[nom_feuille[:31]] = feuille
+    Excel_DuoGCT.parent.mkdir(parents=True, exist_ok=True)
+    with pd.ExcelWriter(Excel_DuoGCT, engine="openpyxl") as writer:
         for nom, df in feuilles.items():
-            df.to_excel(writer, sheet_name=str(nom)[:31], index=False, header=False)
-    print(f"  -> évolution MSE -> {Out_Ods.name} (feuille '{nom_feuille[:31]}')")
+            df.to_excel(writer, sheet_name=str(nom)[:31], index=False)
+    print(f"  -> évolution MSE -> {Excel_DuoGCT.name} (feuille '{nom_feuille[:31]}')")
 
 
 def evaluate_seq(model, dataset):
-    # MSE moyenne (validation) pour un réseau mono-canal direct (DuoCL / GCTNet)
+    #MSE moyenne (validation) pour un réseau mono-canal direct (DuoCL / GCTNet)
     model.eval()
     mses = []
     with torch.no_grad():
@@ -441,7 +373,7 @@ def evaluate_seq(model, dataset):
 
 
 def train_gctnet(epochs, train_data, val_data, test_data, save_dir, log):
-    # GCTNet : générateur + discriminateur (perte MSE + feature + classification)
+    #GCTNet : générateur + discriminateur (perte MSE + feature + classification)
     model = Generator(data_num=512).to(device)
     model_d = Discriminator().to(device)
     model.apply(poids_init)
@@ -465,7 +397,7 @@ def train_gctnet(epochs, train_data, val_data, test_data, save_dir, log):
             x = torch.from_numpy(x).to(device).unsqueeze(1)
             y = torch.from_numpy(y).to(device)
 
-            # --- discriminateur (identique à GCTNet-main/train.py : pas de detach) ---
+            #--- discriminateur (identique à GCTNet-main/train.py : pas de detach) ---
             p = model(x).view(x.shape[0], -1)
             fake_y, _, _, _ = model_d(p.unsqueeze(1))
             real_y, _, _, _ = model_d(y.unsqueeze(1))
@@ -474,14 +406,14 @@ def train_gctnet(epochs, train_data, val_data, test_data, save_dir, log):
             d_loss.backward()
             opt_d.step()
 
-            # --- générateur (perte MSE + feature + classification) ---
+            #--- générateur (perte MSE + feature + classification) ---
             p = model(x).view(x.shape[0], -1)
             fake_y, _, fake_f2, _ = model_d(p.unsqueeze(1))
             _, _, true_f2, _ = model_d(y.unsqueeze(1))
             mse_p = mse(p, y)
             g_loss = (mse_p
-                      + W_FEATURE * mse(fake_f2, true_f2)
-                      + W_CLS * torch.mean((fake_y - 1) ** 2))
+                      + W_feature * mse(fake_f2, true_f2)
+                      + W_cls * torch.mean((fake_y - 1) ** 2))
             opt_d.zero_grad()
             opt_g.zero_grad()
             g_loss.backward()
@@ -508,13 +440,12 @@ def train_gctnet(epochs, train_data, val_data, test_data, save_dir, log):
         if ameliore:
             best_mse = val_mse
             sauve_ckpt(model, save_dir / "BEST_checkpoint.pth.tar", epoch, val_mse)
-    sauve_feuille_mse(f"GCTNet_{args.noise}", "GCTNet", f"EEGdenoiseNet ({args.noise})",
-                      train_mses, val_mses, test_mses)
+    sauve_feuille_mse(f"GCTNet_{bruit}", train_mses, val_mses, test_mses)
     return best_mse
 
 
 def train_duocl(epochs, train_data, val_data, test_data, save_dir, log):
-    # DuoCL : réseau de régression simple (perte MSE)
+    #DuoCL : réseau de régression simple (perte MSE)
     model = DuoCL(data_num=512).to(device)
     model.apply(poids_init)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.5, 0.9), eps=1e-8)
@@ -559,13 +490,12 @@ def train_duocl(epochs, train_data, val_data, test_data, save_dir, log):
         if ameliore:
             best_mse = val_mse
             sauve_ckpt(model, save_dir / "BEST_checkpoint.pth.tar", epoch, val_mse)
-    sauve_feuille_mse(f"DuoCL_{args.noise}", "DuoCL", f"EEGdenoiseNet ({args.noise})",
-                      train_mses, val_mses, test_mses)
+    sauve_feuille_mse(f"DuoCL_{bruit}", train_mses, val_mses, test_mses)
     return best_mse
 
 
 def test_report_seq(nom_modele, save_dir, test_data):
-    # Recharge le meilleur DuoCL/GCTNet et affiche MSE + corrélation + SNR
+    #Recharge le meilleur DuoCL/GCTNet et affiche MSE + corrélation + SNR
     model = (Generator(data_num=512) if nom_modele == "GCTNet" else DuoCL(data_num=512)).to(device)
     ckpt = torch.load(save_dir / "BEST_checkpoint.pth.tar", map_location=device)
     model.load_state_dict(ckpt["state_dict"])
@@ -588,16 +518,16 @@ def test_report_seq(nom_modele, save_dir, test_data):
 
 
 def entraine_eegdenoisenet(cibles):
-    print(f"Modèles : {', '.join(cibles)} | bruit : {args.noise}")
+    print(f"Modèles : {', '.join(cibles)} | bruit : {bruit}")
 
     #Données chargées / découpées une seule fois (partagées entre modèles)
-    eeg, nos = charge_donnees(args.noise)
+    eeg, nos = charge_donnees(bruit)
     (eeg_tr, nos_tr), (eeg_va, nos_va), (eeg_te, nos_te) = decoupe_donnees(eeg, nos)
 
     for nom in cibles:
-        cfg = MODELES[nom]
-        epochs = args.epochs if args.epochs is not None else cfg["epochs"]
-        batch = args.batch_size if args.batch_size is not None else cfg["batch"]
+        cfg = Modeles[nom]
+        epochs = cfg["epochs"]
+        batch = cfg["batch"]
 
         np.random.seed(0)          # reproductibilité par modèle (comme des lancements séparés)
         torch.manual_seed(0)
@@ -609,7 +539,7 @@ def entraine_eegdenoisenet(cibles):
         save_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n===== Entraînement {nom} -> {save_dir} (epochs {epochs}, batch {batch}) =====")
         with open(save_dir / "model_trainValLog.txt", "a+", encoding="utf-8") as log:
-            log.write(f"\n=== {nom} | bruit {args.noise} | epochs {epochs} | batch {batch} ===\n")
+            log.write(f"\n=== {nom} | bruit {bruit} | epochs {epochs} | batch {batch} ===\n")
             best = (train_gctnet if nom == "GCTNet" else train_duocl)(
                 epochs, train_data, val_data, test_data, save_dir, log)
             log.write(f"meilleur val_mse : {best:.4f}\n")
@@ -617,8 +547,8 @@ def entraine_eegdenoisenet(cibles):
         test_report_seq(nom, save_dir, test_data)
 
 
-# ------------------------------------ Main -----------------------------------------
-if args.Modele == "ART":
+#------------------------------------ Main -----------------------------------------
+if args.Modele == "ART_Local":
     entraine_art()
 else:
     entraine_eegdenoisenet(["DuoCL", "GCTNet"] if args.Modele == "all" else [args.Modele])
