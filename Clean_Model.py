@@ -1,14 +1,11 @@
 """
-Applique un modèle de débruitage aux essais prétraités d'un ou plusieurs sujets, et met le
-résultat en cache dans Output/Nettoyé/SXXX/ (un fichier par modèle, recalculé avec --force).
+Applique un modèle de débruitage aux essais prétraités d'un ou plusieurs sujets, et enregistre
+le résultat dans Output/Nettoyé/SXXX/. Le fichier existant est toujours remplacé.
 
   python Clean_Model.py ART                 tous les sujets
   python Clean_Model.py DuoCL 1-10          sujets 1 à 10
-  python Clean_Model.py GCTNet 1,2,5 --force
-  python Clean_Model.py ART_ICLABEL 1 40    ART réentraîné, checkpoint LOSO de l'epoch 40
+  python Clean_Model.py ART_ICLABEL 1 40    ART réentraîné, checkpoint de l'epoch 40 pour sujet 1
 
-Les réseaux 30 canaux (ART, IC-U-Net) traitent l'essai entier ; DuoCL et GCTNet sont
-mono-canal et sont appliqués canal par canal, sur des fenêtres de 512 points.
 """
 
 import argparse as ap
@@ -54,7 +51,6 @@ parser.add_argument("Modele", choices=list(MODELES), help="modèle de débruitag
 parser.add_argument("Sujets", nargs="?", default="1-109", help="ex. 1-109 ou 1,2,5 (défaut : 1-109)")
 parser.add_argument("Epoch", type=int, nargs="?", default=None,
                     help="numéro d'epoch du checkpoint LOSO (requis pour ART_ICLABEL, ex. 40)")
-parser.add_argument("--force", action="store_true", help="recalcule même si le cache existe déjà")
 args = parser.parse_args()
 entry = MODELES[args.Modele]
 
@@ -114,14 +110,11 @@ def debruite_epoch_mono(epoch, model):
 #Chargement du modèle mono-canal si nécessaire (les modèles multi passent par Utils)
 model_obj = charge_modele_mono(entry) if entry["kind"] == "single" else None
 
-#Débruitage sujet par sujet, avec mise en cache dans Nettoyé/
-n_ok = n_skip = n_absent = 0
+#Débruitage sujet par sujet : le fichier de sortie est toujours réécrit
+n_ok = n_absent = 0
 for s in sujets:
     sujet_id = "S" + str(s).zfill(3)
     out = Nettoye / sujet_id / (entry.get("sortie", args.Modele) + ".fif")
-    if out.exists() and not args.force:
-        n_skip += 1
-        continue
     fif_initial = Pretraite / (sujet_id + "_Pre.fif")
     if not fif_initial.exists():
         n_absent += 1
@@ -143,4 +136,4 @@ for s in sujets:
     n_ok += 1
     print("Sujet", s, "-> ", out.name)
 
-print(f"\nTerminé : {n_ok} débruités, {n_skip} déjà en cache, {n_absent} sans prétraité.")
+print(f"\nTerminé : {n_ok} débruités, {n_absent} sans prétraité.")

@@ -49,10 +49,12 @@ Excel_ART = Model_Dir / "ART_ICLABEL" / "resultats_LOSO.xlsx"
 Data_Dir = Racine / "Databases" / "EEGdenoiseNet" / "data"
 Out_Ods = Racine / "resultats_accuracy.ods"
 
-#Hyperparamètres d'ART (reproduisent les réglages du papier)
+#Hyperparamètres d'ART, alignés sur l'entraînement d'origine (Model/ART/modelsave/
+#model_trainValLog.txt) : pas de départ 2,3e-3 décroissant en 1/racine(epoch), soit 2,3e-3
+#à la première epoch et 3e-4 à la soixantième.
 art_n_epochs = 60
 art_batch_size = 32
-art_lr = 0.01
+art_lr = 0.0023
 part_train = 0.8   # part des 108 autres sujets pour l'entraînement (86), le reste en validation (22)
 graine = 42        # split train/validation identique d'une exécution à l'autre
 
@@ -115,12 +117,19 @@ def reconstruit(model, src):
     return model.generator(out).permute(0, 2, 1)
 
 
-def erreur_uv(pred, trg, ecart):
-    # Résidu en µV : on redonne au résidu son échelle d'origine avec l'écart-type scalaire de
-    # l'essai, puis V -> µV. La moyenne n'intervient pas, elle s'annule dans la soustraction.
+def residu(pred, trg):
+    # Résidu sur le signal normalisé — c'est lui qui alimente le gradient, comme dans
+    # l'entraînement d'origine d'ART. Chaque essai pèse alors le même poids ; en µV, un essai
+    # agité pesait jusqu'à neuf fois plus qu'un essai calme et dictait la descente.
     # pred fait 1023 points : on le compare aux 1023 premiers points de la cible, comme à
     # l'inférence où le dernier point est complété séparément.
-    return (pred - trg[:, :, :-1]) * ecart.view(-1, 1, 1) * 1e6
+    return pred - trg[:, :, :-1]
+
+
+def erreur_uv(res, ecart):
+    # Le même résidu ramené à son échelle d'origine, en µV : sert aux courbes et aux
+    # comparaisons du reste du projet, jamais au gradient.
+    return res * ecart.view(-1, 1, 1) * 1e6
 
 
 def rmse_identite(X, Y, S, batch_size):
@@ -130,24 +139,27 @@ def rmse_identite(X, Y, S, batch_size):
     somme, n = 0.0, 0
     with torch.no_grad():
         for j in range(0, len(X), batch_size):
-            e = erreur_uv(X[j:j + batch_size].to(device)[:, :, :-1],
-                          Y[j:j + batch_size].to(device), S[j:j + batch_size].to(device))
+            e = erreur_uv(residu(X[j:j + batch_size].to(device)[:, :, :-1],
+                                 Y[j:j + batch_size].to(device)),
+                          S[j:j + batch_size].to(device))
             somme += float((e ** 2).sum())
             n += e.numel()
     return np.sqrt(somme / n)
 
 
 def rmse_modele(model, X, Y, S, batch_size):
-    # RMSE du modèle sur un jeu (validation ou sujet exclu), même accumulation
+    # RMSE en µV et MSE normalisée du modèle sur un jeu (validation ou sujet exclu)
     model.eval()
-    somme, n = 0.0, 0
+    somme, somme_norm, n = 0.0, 0.0, 0
     with torch.no_grad():
         for j in range(0, len(X), batch_size):
-            e = erreur_uv(reconstruit(model, X[j:j + batch_size].to(device)),
-                          Y[j:j + batch_size].to(device), S[j:j + batch_size].to(device))
+            res = residu(reconstruit(model, X[j:j + batch_size].to(device)),
+                         Y[j:j + batch_size].to(device))
+            e = erreur_uv(res, S[j:j + batch_size].to(device))
             somme += float((e ** 2).sum())
+            somme_norm += float((res ** 2).sum())
             n += e.numel()
-    return np.sqrt(somme / n)
+    return np.sqrt(somme / n), somme_norm / n
 
 
 def entraine_art():
@@ -219,35 +231,42 @@ def entraine_art():
         loader = DataLoader(TensorDataset(X_tr, Y_tr, S_tr), batch_size=batch_size, shuffle=True)
         model = tf_model.make_model(30, 30, N=2).to(device)
         opt = torch.optim.Adam(model.parameters(), lr=art_lr, betas=(0.9, 0.98), eps=1e-9)
-        #Décroissance cosinus du pas : à lr constant, les poids de fin d'epoch sautent trop loin
-        #d'une epoch à l'autre et la courbe de validation zigzague sans descendre. En réduisant
-        #progressivement le pas, les dernières epochs affinent au lieu d'osciller.
-        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_epochs)
+        #Décroissance en 1/racine(epoch), exactement celle de l'entraînement d'origine d'ART :
+        #2,3e-3 à la première epoch, 3e-4 à la soixantième.
+        sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda ep: 1 / np.sqrt(ep + 1))
 
         rmse_train_par_epoch, rmse_val_par_epoch, pertes_batches = [], [], []
         for ep in range(n_epochs):
             print(f"Sujet {sujet_test} - Epoch {ep + 1} - lr {opt.param_groups[0]['lr']:.2e}")
 
             model.train()
-            pertes, somme, n = [], 0.0, 0
+            pertes, somme, somme_norm, n = [], 0.0, 0.0, 0
             for i, (src, trg, ecart) in enumerate(loader):
                 src, trg, ecart = src.to(device), trg.to(device), ecart.to(device)
-                e = erreur_uv(reconstruit(model, src), trg, ecart)
-                perte = torch.sqrt(torch.mean(e ** 2))
+
+                #La loss est la MSE sur signal normalisé, celle de l'entraînement d'origine :
+                #c'est elle, et elle seule, qui produit le gradient
+                res = residu(reconstruit(model, src), trg)
+                perte = torch.mean(res ** 2)
                 opt.zero_grad()
                 perte.backward()
                 opt.step()
+
+                #Le même résidu en µV, seulement pour les courbes et le classeur
+                e = erreur_uv(res.detach(), ecart)
                 pertes.append(perte.item())
                 somme += float((e ** 2).sum())
+                somme_norm += float((res.detach() ** 2).sum())
                 n += e.numel()
-                print(f"    batch {i + 1}/{len(loader)} - perte {perte.item():.2f} µV", flush=True)
+                print(f"    batch {i + 1}/{len(loader)} - perte {perte.item():.4f}", flush=True)
             pertes_batches.append(pertes)
             #RMSE global de l'epoch (somme des carrés puis racine), et non moyenne des RMSE par
             #batch, qui sous-estimerait et ne serait pas comparable au RMSE de validation
             rmse_train = np.sqrt(somme / n)
+            mse_train_norm = somme_norm / n
             rmse_train_par_epoch.append(rmse_train)
 
-            rmse_val = rmse_modele(model, X_val, Y_val, S_val, batch_size)
+            rmse_val, mse_val_norm = rmse_modele(model, X_val, Y_val, S_val, batch_size)
             rmse_val_par_epoch.append(rmse_val)
 
             #checkpoint de cette epoch : modelsave/SujetXXX/Epoch_NY/checkpoint.pth.tar
@@ -261,8 +280,13 @@ def entraine_art():
             Utils.sauve_feuille_loso(Excel_ART, sujet_test, rmse_train_par_epoch,
                                      rmse_val_par_epoch, pertes_batches)
 
-            print(f"  {sujet_test} - Epoch {ep + 1}/{n_epochs} : train {rmse_train:.2f} µV | "
-                  f"validation {rmse_val:.2f} µV | identité {rmse_id_val:.2f} µV", flush=True)
+            #Bilan de l'epoch dans les deux unités : la MSE normalisée est celle qu'optimise
+            #le modèle et se compare directement au journal d'origine (Model/ART/modelsave/
+            #model_trainValLog.txt) ; le RMSE en µV reste la grandeur physique du projet.
+            print(f"  {sujet_test} - Epoch {ep + 1}/{n_epochs} : "
+                  f"MSE train {mse_train_norm:.4f} | val {mse_val_norm:.4f}   ||   "
+                  f"RMSE train {rmse_train:.2f} µV | val {rmse_val:.2f} µV "
+                  f"| identité {rmse_id_val:.2f} µV", flush=True)
             sched.step()   # après les pas de l'epoch : le pas décroît pour l'epoch suivante
 
         #test final sur le sujet exclu, avec le checkpoint de la meilleure epoch de validation
@@ -271,12 +295,12 @@ def entraine_art():
         ckpt = Sortie_ART / sujet_test / f"Epoch_N{meilleure_epoch}" / "checkpoint.pth.tar"
         model.load_state_dict(torch.load(ckpt, map_location=device)["state_dict"])
 
-        rmse_test = rmse_modele(model, X_te, Y_te, S_te, batch_size)
+        rmse_test, mse_test_norm = rmse_modele(model, X_te, Y_te, S_te, batch_size)
         rmses.append(rmse_test)
         #gain relatif sur la baseline : négatif = le modèle fait pire que recopier l'entrée
         gain = (rmse_id_test - rmse_test) / rmse_id_test * 100
-        print(f"  {sujet_test} : RMSE test {rmse_test:.2f} µV (epoch {meilleure_epoch}) "
-              f"- identité {rmse_id_test:.2f} µV, gain {gain:+.1f} % "
+        print(f"  {sujet_test} : MSE test {mse_test_norm:.4f} | RMSE test {rmse_test:.2f} µV "
+              f"(epoch {meilleure_epoch}) - identité {rmse_id_test:.2f} µV, gain {gain:+.1f} % "
               f"- {time.time() - debut:.1f}s", flush=True)
 
     if rmses:

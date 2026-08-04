@@ -1,14 +1,10 @@
 """
-Mesure ce qui reste de l'intention motrice dans un signal : décodage main gauche vs main
-droite par CSP + LDA, en validation croisée (10 tirages 80/20). C'est le critère qui compte
-pour un débruiteur — enlever du bruit sans effacer l'information utile.
+Décodage main gauche vs main droite par CSP + LDA, en validation croisée (10 tirages 80/20).
 
   python Evaluation.py brut 1      un sujet
   python Evaluation.py ART         les 109 sujets, avec la moyenne finale
-  python Evaluation.py ART 4 1     ART au checkpoint LOSO de l'epoch 1, sujet 4
+  python Evaluation.py ART 4 1     ART au checkpoint de l'epoch 1, sujet 4
 
-Toutes les méthodes portent sur exactement les mêmes essais : le repos est retiré juste
-avant la classification, jamais au prétraitement.
 """
 
 import argparse as ap
