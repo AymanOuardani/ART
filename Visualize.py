@@ -9,6 +9,17 @@ Signaux : brut · pretraite · ART_Orig · ART_Local · ICUNet · ICUNet++ · IC
 Les essais sont colorés par classe (gauche, droite, repos).
 """
 
+"""
+English summary: opens interactive MNE browser windows to visually inspect a subject's
+signal, either raw vs ICLabel-cleaned, preprocessed epochs, or before/after denoising by
+a chosen model. Epochs are colored by class (left, right, rest).
+
+Usage:
+  python Visualize.py <signal> <subject>
+  <signal> is one of: brut, pretraite, ART_Orig, ART_Local, ICUNet, ICUNet++,
+  ICUNet_attn, DuoCL, GCTNet, ICLABEL. <subject> is 1-109.
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np
@@ -17,10 +28,11 @@ import mne as mne
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI")
-Brut_fif_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_ICLABEL")
-Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
+Racine = pl.Path(__file__).resolve().parent
+Brut_fif = Racine / "Databases" / "EEGBCI"
+Brut_fif_ICLABEL = Racine / "Databases" / "EEGBCI_ICLABEL"
+Pretraite = Racine / "Output" / "Prétraité"
+Nettoye = Racine / "Output" / "Nettoyé"
 
 #Fichier débruité de chaque modèle
 fichiers_apres = {"ART_Orig": "ART_Orig.fif", "ART_Local": "ART_Local.fif",

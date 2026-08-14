@@ -6,9 +6,20 @@ validation repéré en rouge. Un écart qui se creuse signale du surapprentissag
   python MSE_Plot.py DuoCL
   python MSE_Plot.py GCTNet
 
-Les données viennent des classeurs écrits par Train_Model.py : Output/Train_ART_Local.xlsx
-pour ART_Local, une feuille par sujet ; Output/Train_DuoGCT.xlsx pour les deux autres, une
+Les données viennent des classeurs écrits par Train_Model.py : Ressources/Train_ART_Local.xlsx
+pour ART_Local, une feuille par sujet ; Ressources/Train_DuoGCT.xlsx pour les deux autres, une
 feuille par modèle et par bruit.
+"""
+
+"""
+English summary: plots the per-epoch training and validation error curves for a given
+trained model, marking the validation minimum in red (a widening train/val gap points
+to overfitting). Reads results previously written by Train_Model.py.
+
+Usage:
+  python MSE_Plot.py <model> [subject]
+  <model> is one of: ART_Local, DuoCL, GCTNet. <subject> (excluded subject number) is
+  required only for ART_Local.
 """
 
 import argparse as ap
@@ -18,9 +29,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 #Chemins des fichiers
-Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
-Excel_ART = Output / "Train_ART_Local.xlsx"
-Excel_DuoGCT = Output / "Train_DuoGCT.xlsx"
+Racine = pl.Path(__file__).resolve().parent
+Output = Racine / "Output"
+Ressources = Racine / "Ressources"
+Excel_ART = Ressources / "Train_ART_Local.xlsx"
+Excel_DuoGCT = Ressources / "Train_DuoGCT.xlsx"
 
 #Ligne de commande
 parser = ap.ArgumentParser(description="Erreur par epoch d'un entraînement")

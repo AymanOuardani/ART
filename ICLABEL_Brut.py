@@ -16,6 +16,18 @@ gardée dans Fitted_ICA/, si bien que changer le critère de tri ne demande pas 
 recalculer — c'est elle qui prend le temps.
 """
 
+"""
+English summary: builds the pseudo-clean reference signal used to train/evaluate ART:
+fits (or reloads) an ICA on the continuous 64-channel raw signal, keeps only the
+components ICLabel classifies as "brain" with confidence > 80%, reconstructs the signal
+from those components, and saves it.
+
+Usage:
+  python ICLABEL_Brut.py [subjects]
+  <subjects> is a range/list like "1-109" (default), "1,2,5" or "1-3,5-109".
+Output: Databases/EEGBCI_ICLABEL/SXXX-raw.fif (subjects already processed are skipped).
+"""
+
 import argparse as ap
 import pathlib as pl
 import time
@@ -27,9 +39,10 @@ from mne_icalabel import label_components
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI")
-Sortie = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_ICLABEL")
-Fitted_ICA = pl.Path(r"C:\Users\aymen\Desktop\ART\Fitted_ICA")
+Racine = pl.Path(__file__).resolve().parent
+Brut_fif = Racine / "Databases" / "EEGBCI"
+Sortie = Racine / "Databases" / "EEGBCI_ICLABEL"
+Fitted_ICA = Racine / "Fitted_ICA"
 
 #Une composante n'est gardée que si ICLabel la dit cérébrale avec au moins cette confiance
 Seuil_brain = 0.80

@@ -11,6 +11,18 @@ traitement : c'est indispensable puisqu'ils sont ensuite comparés échantillon 
 et qu'ils forment la paire d'entraînement d'ART.
 """
 
+"""
+English summary: converts one subject's continuous EEGBCI raw signal into the format
+expected by the denoising models: selects/reorders the 30 ART-template channels,
+resamples 160 -> 256 Hz, applies a 1-50 Hz FIR filter, then segments the signal into
+4-second epochs around the events (3 classes: left, right, rest).
+
+Usage:
+  python Pretraitement.py <brut|iclabel> <subject>
+  "brut" processes the original raw signal, "iclabel" processes its ICLabel-cleaned
+  version (produced by ICLABEL_Brut.py). <subject> is 1-109.
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np
@@ -22,9 +34,10 @@ from mne.datasets import eegbci
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Brut_fif = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI")
-Brut_fif_ICLABEL = pl.Path(r"C:\Users\aymen\Desktop\ART\Databases\EEGBCI_ICLABEL")
-Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
+Racine = pl.Path(__file__).resolve().parent
+Brut_fif = Racine / "Databases" / "EEGBCI"
+Brut_fif_ICLABEL = Racine / "Databases" / "EEGBCI_ICLABEL"
+Output = Racine / "Output"
 Pretraite = Output / "Prétraité"
 Nettoye = Output / "Nettoyé"
 

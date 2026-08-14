@@ -24,6 +24,10 @@ _cache = {}
 
 
 def get_model(mode, sujet_id=None, epoch_num=None):
+    """Load and cache a denoising model checkpoint by (mode, sujet_id, epoch_num),
+    building the right architecture for `mode` and returning it in eval mode.
+    ART_Local needs sujet_id and epoch_num (one checkpoint per subject/epoch);
+    the other modes ignore them (single shared checkpoint)."""
     #Charge le modele une seule fois, puis le garde en cache.
     #ART_Local a un checkpoint par sujet et par epoch, les autres un seul
     cle = (mode, sujet_id, epoch_num)
@@ -56,6 +60,8 @@ def get_model(mode, sujet_id=None, epoch_num=None):
 
 
 def decode_data(data, mode, sujet_id=None, epoch_num=None):
+    """Run the given model on one already-normalized (30, 1024) block and return the
+    denoised block as a float64 numpy array."""
     #Debruite un bloc (30, 1024) deja normalise
     model = get_model(mode, sujet_id, epoch_num)
     with torch.no_grad():
@@ -73,6 +79,8 @@ def decode_data(data, mode, sujet_id=None, epoch_num=None):
 
 
 def clean_epoch(epoch, mode, sujet_id=None, epoch_num=None):
+    """Denoise a full epoch with the given model: z-score, denoise, then rescale
+    back to the original amplitude/offset."""
     #z-score du bloc entier, debruitage, retour a l'echelle d'origine
     std = np.std(epoch)
     avg = np.average(epoch)
@@ -81,6 +89,8 @@ def clean_epoch(epoch, mode, sujet_id=None, epoch_num=None):
 
 
 def sauve_feuille(fichier, sujet, rmse_train, rmse_val, pertes_batches):
+    """Update (or create) the training-curves workbook `fichier` with one sheet for
+    `sujet`, containing the per-epoch train/val RMSE (µV) and per-batch losses."""
     #Une feuille par sujet : les deux courbes en µV, puis les pertes de chaque batch
     colonnes = {"epoch_train_rmse": rmse_train, "epoch_val_rmse": rmse_val}
     for i, pertes in enumerate(pertes_batches):

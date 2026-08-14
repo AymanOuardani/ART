@@ -8,9 +8,23 @@ Entraînement des modèles.
 
 - ART_Local apprend à reproduire ICLabel : entrée = Output/Prétraité/SXXX_Pre.fif,
 cible = Output/Nettoyé/SXXX/ICLABEL.fif. Les courbes vont dans
-Output/Train_ART_Local.xlsx, une feuille par sujet.
+Ressources/Train_ART_Local.xlsx, une feuille par sujet.
 - DuoCL et GCTNet apprennent sur EEGdenoiseNet, leurs courbes vont dans
-Output/Train_DuoGCT.xlsx, une feuille par modèle et par bruit.
+Ressources/Train_DuoGCT.xlsx, une feuille par modèle et par bruit.
+"""
+
+"""
+English summary: trains the denoising models used in this project.
+- ART_Local: leave-one-subject-out training of the ART transformer to reproduce the
+  ICLabel-cleaned signal from the preprocessed (noisy) one, one model per excluded
+  subject, saving a checkpoint every epoch and per-epoch RMSE curves to Excel.
+- DuoCL / GCTNet: trained on the public EEGdenoiseNet dataset with synthetic EOG/EMG
+  noise injected at random SNR levels, saving the best (lowest val MSE) checkpoint and
+  per-epoch MSE curves to Excel.
+
+Usage:
+  python Train_Model.py <ART_Local|DuoCL|GCTNet|all>
+  ("all" trains DuoCL and GCTNet.)
 """
 
 import argparse as ap
@@ -34,15 +48,16 @@ import Utils
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Racine = pl.Path(r"C:\Users\aymen\Desktop\ART")
+Racine = pl.Path(__file__).resolve().parent
+Ressources = Racine / "Ressources"
 Model_Dir = Racine / "Model"
 Pretraite = Racine / "Output" / "Prétraité"        # ART : entrée bruitée
 Nettoye = Racine / "Output" / "Nettoyé"            # ART : cible propre
 Cible = "ICLABEL.fif"
 Sortie_ART = Model_Dir / "ART_Local" / "modelsave"
-Excel_ART = Racine / "Output" / "Train_ART_Local.xlsx"
+Excel_ART = Ressources / "Train_ART_Local.xlsx"
 Data_Dir = Racine / "Databases" / "EEGdenoiseNet" / "data"
-Excel_DuoGCT = Racine / "Output" / "Train_DuoGCT.xlsx"
+Excel_DuoGCT = Ressources / "Train_DuoGCT.xlsx"
 
 #Hyperparamètres d'ART, repris de l'entraînement d'origine
 art_n_epochs = 60
@@ -85,6 +100,8 @@ else:
 #===================================== ART =====================================
 
 def reconstruit(model, src):
+    """Run the ART transformer on a noisy batch `src` (teacher-forced on itself,
+    never on the target) and return the reconstructed/denoised signal."""
     #Le décodeur reçoit le signal bruité, jamais la cible : sinon il apprendrait
     #à la recopier, ce qu'il ne pourra pas faire à l'inférence.
     batch = tf_data.Batch(src, src, pad=0)
@@ -93,17 +110,23 @@ def reconstruit(model, src):
 
 
 def residu(pred, trg):
+    """Return the normalized residual pred - trg (dropping the target's last point to
+    match pred's length); this is what the training loss/gradient is computed on."""
     #Résidu normalisé : c'est lui qui alimente le gradient, chaque essai du même poids.
     #pred fait 1023 points, on le compare aux 1023 premiers de la cible.
     return pred - trg[:, :, :-1]
 
 
 def erreur_uv(res, ecart):
+    """Rescale a normalized residual back to microvolts using each trial's stored
+    std `ecart`, for reporting/plotting only (not used in the loss)."""
     #Le même résidu en µV, pour les courbes seulement
     return res * ecart.view(-1, 1, 1) * 1e6
 
 
 def rmse_modele(model, X, Y, S, batch_size):
+    """Evaluate `model` in batches over (X, Y, S) and return (RMSE in µV, normalized
+    MSE) aggregated over every sample rather than averaged per-batch."""
     #RMSE en µV et MSE normalisée sur un jeu
     model.eval()
     somme, somme_norm, n = 0.0, 0.0, 0
@@ -119,6 +142,10 @@ def rmse_modele(model, X, Y, S, batch_size):
 
 
 def entraine_art():
+    """Leave-one-subject-out training of the ART transformer: for each subject in
+    turn (held out as the final test subject), train on a random 80/20 split of the
+    remaining 108 subjects, checkpoint every epoch, then report test RMSE using the
+    checkpoint with the lowest validation RMSE."""
     n_epochs = art_n_epochs
     batch_size = art_batch_size
 
@@ -243,6 +270,8 @@ def entraine_art():
 #========================= DuoCL / GCTNet (EEGdenoiseNet) =========================
 
 def tuile(arr, n, graine_bruit):
+    """Shuffle `arr` (fixed seed `graine_bruit`) and tile it to exactly `n` rows, so
+    a smaller noise dataset can be matched to a larger EEG dataset."""
     #Mélange (graine fixe) puis réplique le bruit pour obtenir exactement n époques
     rng = np.random.RandomState(graine_bruit)
     arr = arr[rng.permutation(arr.shape[0])]
@@ -251,6 +280,9 @@ def tuile(arr, n, graine_bruit):
 
 
 def charge_donnees(bruit):
+    """Load the clean EEGdenoiseNet epochs and the requested noise type ("EOG",
+    "EMG", or "Hybrid" = normalized sum of both), tiled to match the EEG count, and
+    return them shuffled together with a fixed seed."""
     #Charge les 4514 époques EEG propres + le bruit, aligné sur l'EEG et mélangé (graine fixe)
     eeg = np.load(Data_Dir / "EEG_all_epochs.npy").astype(np.float32)
     n = eeg.shape[0]
@@ -269,6 +301,8 @@ def charge_donnees(bruit):
 
 
 def decoupe_donnees(eeg, nos, test_ratio=0.1, val_ratio=0.1):
+    """Split (eeg, nos) into train/val/test slices by contiguous ranges (no shuffle,
+    since the arrays are already shuffled) and return a list of (eeg, nos) pairs."""
     #~90% train / 10% test (4514 -> 4062/452, façon article), val = 10% du train
     n = eeg.shape[0]
     n_trainfull = int(n * (1 - test_ratio))
@@ -292,9 +326,12 @@ class EEGAvecBruit:
         self.batch_size = batch_size
 
     def len(self):
+        """Number of batches for one pass over the (SNR-expanded) dataset."""
         return math.ceil(self.EEG.shape[0] / self.batch_size)
 
     def item(self, i):
+        """Mix clean EEG and noise for sample `i` at its assigned SNR, and return
+        (noisy, clean) both normalized by the noisy signal's std."""
         eeg, nos, snr = self.EEG[i], self.NOS[i], self.SNR[i]
         eeg_rms = np.sqrt(np.sum(eeg ** 2) / eeg.shape[0])
         nos_rms = np.sqrt(np.sum(nos ** 2) / nos.shape[0])
@@ -304,6 +341,7 @@ class EEGAvecBruit:
         return bruite / std, eeg / std          # (bruité normalisé, propre normalisé)
 
     def batch(self, i):
+        """Build noisy/clean batch `i` by stacking `item()` over its sample range."""
         deb = i * self.batch_size
         fin = min((i + 1) * self.batch_size, self.EEG.shape[0])
         bruite, propre = [], []
@@ -314,18 +352,22 @@ class EEGAvecBruit:
         return np.array(bruite, dtype=np.float32), np.array(propre, dtype=np.float32)
 
     def melange(self):
+        """Reshuffle EEG/noise pairing and redraw a fresh random SNR per sample,
+        called between epochs to vary the training noise mixtures."""
         self.EEG = self.EEG[np.random.permutation(self.EEG.shape[0])]
         self.NOS = self.NOS[np.random.permutation(self.NOS.shape[0])]
         self.SNR = 10 ** (np.random.uniform(-5, 5, self.EEG.shape[0]) * 0.05)
 
 
 def cal_snr(pred, vrai):
+    """Per-sample output SNR in dB between predicted and true signal."""
     ps = np.sum(np.square(vrai), axis=-1)
     pn = np.sum(np.square(pred - vrai), axis=-1)
     return 10 * np.log10(ps / pn)
 
 
 def poids_init(m):
+    """Xavier-init Conv1d weights and zero their bias; used as a model.apply() callback."""
     if isinstance(m, nn.Conv1d):
         nn.init.xavier_uniform_(m.weight)
         if m.bias is not None:
@@ -333,11 +375,14 @@ def poids_init(m):
 
 
 def sauve_ckpt(model, chemin, epoch, val_mse):
+    """Save model weights plus the epoch number and validation MSE to `chemin`."""
     chemin.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "epoch": epoch, "val_mse": val_mse}, chemin)
 
 
 def sauve_feuille_mse(nom_feuille, train_mses, val_mses, test_mses):
+    """Update (or create) the DuoCL/GCTNet workbook with one sheet `nom_feuille`
+    holding train/val/test MSE per epoch."""
     #Une feuille par modèle et par bruit : le MSE des trois jeux, epoch par epoch
     feuille = pd.DataFrame({"epoch": range(1, len(train_mses) + 1),
                             "train_mse": np.round(train_mses, 6),
@@ -359,6 +404,8 @@ def sauve_feuille_mse(nom_feuille, train_mses, val_mses, test_mses):
 
 
 def evaluate_seq(model, dataset):
+    """Mean MSE of `model` over `dataset`, for the direct single-channel networks
+    (DuoCL / GCTNet, no adversarial loss)."""
     #MSE moyenne (validation) pour un réseau mono-canal direct (DuoCL / GCTNet)
     model.eval()
     mses = []
@@ -373,6 +420,9 @@ def evaluate_seq(model, dataset):
 
 
 def train_gctnet(epochs, train_data, val_data, test_data, save_dir, log):
+    """Train GCTNet's generator/discriminator pair (adversarial + feature + MSE
+    losses), checkpointing every epoch and saving the best validation-MSE checkpoint.
+    Returns the best validation MSE reached."""
     #GCTNet : générateur + discriminateur (perte MSE + feature + classification)
     model = Generator(data_num=512).to(device)
     model_d = Discriminator().to(device)
@@ -445,6 +495,8 @@ def train_gctnet(epochs, train_data, val_data, test_data, save_dir, log):
 
 
 def train_duocl(epochs, train_data, val_data, test_data, save_dir, log):
+    """Train DuoCL with a plain MSE regression loss, checkpointing every epoch and
+    saving the best validation-MSE checkpoint. Returns the best validation MSE."""
     #DuoCL : réseau de régression simple (perte MSE)
     model = DuoCL(data_num=512).to(device)
     model.apply(poids_init)
@@ -495,6 +547,8 @@ def train_duocl(epochs, train_data, val_data, test_data, save_dir, log):
 
 
 def test_report_seq(nom_modele, save_dir, test_data):
+    """Reload the best checkpoint for `nom_modele` (DuoCL/GCTNet) and print its
+    test-set MSE, correlation, and SNR."""
     #Recharge le meilleur DuoCL/GCTNet et affiche MSE + corrélation + SNR
     model = (Generator(data_num=512) if nom_modele == "GCTNet" else DuoCL(data_num=512)).to(device)
     ckpt = torch.load(save_dir / "BEST_checkpoint.pth.tar", map_location=device)
@@ -518,6 +572,8 @@ def test_report_seq(nom_modele, save_dir, test_data):
 
 
 def entraine_eegdenoisenet(cibles):
+    """Load and split the EEGdenoiseNet data once, then train each model in `cibles`
+    (DuoCL and/or GCTNet) on the shared split and report its test metrics."""
     print(f"Modèles : {', '.join(cibles)} | bruit : {bruit}")
 
     #Données chargées / découpées une seule fois (partagées entre modèles)

@@ -8,6 +8,17 @@ Montre les topographies des composantes du CSP.
 La figure compare trois lignes : le signal demandé, ICLabel et ART_Orig.
 """
 
+"""
+English summary: computes CSP (Common Spatial Patterns) spatial filters for a chosen
+denoised signal and plots their scalp topographies side by side with the ICLabel and
+ART_Orig references, for visual comparison of what each filter picks up on the scalp.
+
+Usage:
+  python CSP.py <signal> <subject_number>
+  where <signal> is one of: brut, ART_Orig, ART_Local, ICUNet, ICUNet++, ICUNet_attn,
+  DuoCL, GCTNet, ICLABEL, and <subject_number> is an integer in [1, 109].
+"""
+
 import argparse as ap
 import pathlib as pl
 import matplotlib.pyplot as plt
@@ -18,8 +29,9 @@ from mne.decoding import CSP
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Pretraite = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Prétraité")
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
+Racine = pl.Path(__file__).resolve().parent
+Pretraite = Racine / "Output" / "Prétraité"
+Nettoye = Racine / "Output" / "Nettoyé"
 
 #Fichier de chaque signal
 fichiers = {"brut": None,

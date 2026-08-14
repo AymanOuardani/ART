@@ -10,6 +10,18 @@ dans Output/Nettoyé/SXXX/. Le fichier existant est toujours remplacé.
 
 """
 
+"""
+English summary: applies a chosen denoising model (ART_Orig, ART_Local, ICUNet family,
+DuoCL, GCTNet) to the preprocessed epochs of one or all subjects, and saves the denoised
+epochs to Output/Nettoyé/SXXX/<model>.fif (always overwritten if it already exists).
+
+Usage:
+  python Clean_Model.py <model> [subject|tout] [epoch]
+  <model> is one of: ART_Orig, ART_Local, ICUNet, ICUNet++, ICUNet_attn, DuoCL, GCTNet.
+  <subject> is a subject number, or "tout" (all 109 subjects, default).
+  <epoch> is required only for ART_Local, which has one checkpoint per subject/epoch.
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np
@@ -22,8 +34,9 @@ from Model.GCTNet import Generator
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
-Model_Dir = pl.Path(r"C:\Users\aymen\Desktop\ART\Model")
+Racine = pl.Path(__file__).resolve().parent
+Output = Racine / "Output"
+Model_Dir = Racine / "Model"
 Pretraite = Output / "Prétraité"
 Nettoye = Output / "Nettoyé"
 
@@ -53,6 +66,8 @@ if args.Modele == "ART_Local" and args.Epoch is None:
 
 
 def charge_modele_mono():
+    """Load the single-channel model (DuoCL or GCTNet) for the selected --Modele,
+    preferring the BEST checkpoint if present, and return it in eval mode on `device`."""
     #Réseau mono-canal, poids BEST de préférence
     dossier = Model_Dir / args.Modele / "modelsave"
     ckpt = dossier / "BEST_checkpoint.pth.tar"
@@ -65,6 +80,8 @@ def charge_modele_mono():
 
 
 def fenetres(total):
+    """Return the start indices of consecutive Win-sized windows covering `total`
+    samples, shifting the last window back so it stays anchored to the end."""
     #Débuts des fenêtres, la dernière ancrée à la fin
     debuts = list(range(0, total, Win))
     if debuts[-1] + Win > total:
@@ -73,6 +90,9 @@ def fenetres(total):
 
 
 def debruite_epoch_mono(epoch, model):
+    """Denoise one (channels, time) epoch with a single-channel model: split each
+    channel into z-scored Win-sample windows, denoise them, then rescale and
+    reassemble into an array with the same shape as `epoch`."""
     #Canal par canal, par fenêtres de 512 points z-scorées
     C, T = epoch.shape
     segs, meta = [], []

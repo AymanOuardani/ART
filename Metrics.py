@@ -11,6 +11,16 @@ Le SNR se lit comme un rapport signal/bruit : 0 dB signifie que l'erreur a la m�
 amplitude que le signal de référence, 6 dB qu'elle en fait la moitié, 14 dB le cinquième.
 """
 
+"""
+English summary: computes and prints signal-quality metrics (RMS, RMSE, MAE, SNR) for
+every denoising method applied to one subject, all measured against the ICLabel signal
+used as ground-truth reference.
+
+Usage:
+  python Metrics.py <metric> <subject>
+  <metric> is one of: RMS, RMSE, MAE, SNR, tout (all four). <subject> is 1-109.
+"""
+
 import argparse as ap
 import pathlib as pl
 import numpy as np
@@ -19,7 +29,8 @@ import mne as mne
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Nettoye = pl.Path(r"C:\Users\aymen\Desktop\ART\Output\Nettoyé")
+Racine = pl.Path(__file__).resolve().parent
+Nettoye = Racine / "Output" / "Nettoyé"
 
 #ICLabel sert de référence
 Reference = "ICLABEL.fif"

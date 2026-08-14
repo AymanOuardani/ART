@@ -8,10 +8,24 @@ Décodage main gauche vs main droite par CSP + LDA, en validation croisée (10 t
   python Evaluation.py CSP tout      accuracy selon le nombre de composantes CSP
   python Evaluation.py CSP ART_Orig  le même balayage sur une seule méthode
 
-Les résultats vont dans Output/Evaluation_Accuracies.xlsx, une feuille par méthode : les
+Les résultats vont dans Ressources/Evaluation_Accuracies.xlsx, une feuille par méthode : les
 10 runs de chaque sujet, puis les moyennes et écarts-types. Le balayage CSP écrit dans
-Output/Evaluation_CSP.xlsx, une feuille par méthode, un sujet par ligne et un nombre de
+Ressources/Evaluation_CSP.xlsx, une feuille par méthode, un sujet par ligne et un nombre de
 composantes par colonne.
+"""
+
+"""
+English summary: evaluates left-hand vs right-hand motor-imagery decoding accuracy via
+a CSP + LDA pipeline, using 10-fold shuffled 80/20 cross-validation, either for one
+denoising method or for all of them across one or all 109 subjects. Can also sweep the
+number of CSP components to find the best value per method/subject.
+
+Usage:
+  python Evaluation.py <method> [subject]        accuracy for one/all subjects
+  python Evaluation.py tout [subject]             accuracy for every method
+  python Evaluation.py CSP [tout|method]          sweep over CSP component counts
+Results are written to Ressources/Evaluation_Accuracies.xlsx (or Evaluation_CSP.xlsx
+for the sweep), one sheet per method.
 """
 
 import argparse as ap
@@ -28,11 +42,13 @@ from sklearn.model_selection import ShuffleSplit, cross_val_score
 mne.set_log_level("ERROR")
 
 #Chemins des fichiers
-Output = pl.Path(r"C:\Users\aymen\Desktop\ART\Output")
+Racine = pl.Path(__file__).resolve().parent
+Output = Racine / "Output"
+Ressources = Racine / "Ressources"
 Pretraite = Output / "Prétraité"
 Nettoye = Output / "Nettoyé"
-Classeur = Output / "Evaluation_Accuracies.xlsx"
-Classeur_CSP = Output / "Evaluation_CSP.xlsx"
+Classeur = Ressources / "Evaluation_Accuracies.xlsx"
+Classeur_CSP = Ressources / "Evaluation_CSP.xlsx"
 classe1, classe2 = "gauche", "droite"   # imagerie main gauche / main droite (runs 4/8/12)
 
 #Fichier de chaque signal. Tous viennent de Prétraité, repos compris.
@@ -87,6 +103,9 @@ cv = ShuffleSplit(N_iter, test_size=0.2, random_state=42)
 
 
 def charge_essais(methode, sujet_id):
+    """Load left/right epochs for one subject and method, apply average reference,
+    band-pass filter (7-30 Hz) and crop to the [1,2]s window. Returns (X, y), or
+    (None, None) if the file is missing."""
     #Essais gauche/droite d'un sujet, référence moyenne retirée, 7-30 Hz, fenêtre [1,2]s
     if methode == "brut":
         fichier = Pretraite / (sujet_id + "_Pre.fif")
@@ -103,6 +122,7 @@ def charge_essais(methode, sujet_id):
 
 
 def decodeur(methode, n):
+    """Build a CSP + LDA sklearn Pipeline with `n` CSP components for the given method."""
     #ICLabel est rang-déficient après retrait de composantes, d'où la régularisation
     reg = "ledoit_wolf" if methode == "ICLABEL" else None
     return Pipeline([("CSP", CSP(n_components=n, reg=reg, log=True, norm_trace=False)),
@@ -110,6 +130,8 @@ def decodeur(methode, n):
 
 
 def ecris(classeur, feuilles):
+    """Write the full workbook (all sheets) to `classeur`. Called after each method
+    finishes so progress is never lost if the run is interrupted."""
     #Réécrit tout le classeur, appelé après chaque méthode pour ne rien perdre
     classeur.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(classeur, engine="openpyxl") as writer:
